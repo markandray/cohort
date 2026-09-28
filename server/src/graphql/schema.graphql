@@ -1,0 +1,71 @@
+type DashboardClassSummary {
+  id: ID!
+  name: String!
+}
+
+type DashboardAssignmentSummary {
+  id: ID!
+  title: String!
+  dueDate: String!
+  className: String!
+}
+
+type DashboardGradeSummary {
+  submissionId: ID!
+  assignmentTitle: String!
+  grade: Float!
+  feedback: String
+}
+
+type DashboardStudyGroupSummary {
+  id: ID!
+  name: String!
+  className: String!
+}
+
+type StudentDashboard {
+  classes: [DashboardClassSummary!]!
+  classCount: Int!
+  upcomingAssignments: [DashboardAssignmentSummary!]!
+  overdueAssignments: [DashboardAssignmentSummary!]!
+  currentGrades: [DashboardGradeSummary!]!
+  studyGroups: [DashboardStudyGroupSummary!]!
+  studyGroupCount: Int!
+  noteCount: Int!
+}
+
+type UngradedSubmissionSummary {
+  submissionId: ID!
+  assignmentId: ID!
+  assignmentTitle: String!
+  studentName: String!
+  className: String!
+  submittedAt: String!
+}
+
+type TeacherDashboard {
+  classes: [DashboardClassSummary!]!
+  classCount: Int!
+  ungradedSubmissions: [UngradedSubmissionSummary!]!
+  upcomingAssignments: [DashboardAssignmentSummary!]!
+}
+
+type AdminDashboard {
+  totalStudents: Int!
+  totalTeachers: Int!
+  totalAdmins: Int!
+  totalClasses: Int!
+  totalAssignments: Int!
+  totalUngradedSubmissions: Int!
+}
+
+type Dashboard {
+  role: String!
+  student: StudentDashboard
+  teacher: TeacherDashboard
+  admin: AdminDashboard
+}
+
+type Query {
+  dashboard: Dashboard!
+}

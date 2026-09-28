@@ -1,0 +1,158 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum DeadlineSource {
+  ASSIGNMENT
+  CUSTOM
+}
+
+model User {
+  id            String   @id @default(uuid())
+  name          String
+  email         String   @unique
+  password_hash String
+  role          Role
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  classesTaught  Class[]        @relation("TeacherClasses")
+  enrollments    Enrollment[]
+  submissions    Submission[]
+  groupsCreated  StudyGroup[]   @relation("GroupCreator")
+  groupMemberships GroupMember[]
+  notes          Note[]
+  deadlines      Deadline[]
+}
+
+model Class {
+  id         String   @id @default(uuid())
+  name       String
+  class_code String   @unique
+  teacher_id String
+  teacher    User     @relation("TeacherClasses", fields: [teacher_id], references: [id])
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  enrollments Enrollment[]
+  assignments Assignment[]
+  studyGroups StudyGroup[]
+  notes       Note[]
+
+  @@index([teacher_id])
+}
+
+model Enrollment {
+  id         String @id @default(uuid())
+  student_id String
+  class_id   String
+
+  student User  @relation(fields: [student_id], references: [id])
+  class   Class @relation(fields: [class_id], references: [id])
+
+  @@unique([student_id, class_id])
+  @@index([class_id])
+}
+
+model Assignment {
+  id          String   @id @default(uuid())
+  class_id    String
+  title       String
+  description String?
+  due_date    DateTime
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  class       Class        @relation(fields: [class_id], references: [id])
+  submissions Submission[]
+  deadlines   Deadline[]
+
+  @@index([class_id])
+  @@index([due_date])
+}
+
+model Submission {
+  id            String    @id @default(uuid())
+  assignment_id String
+  student_id    String
+  content       String?
+  file_url      String?
+  submitted_at  DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  grade         Float?
+  feedback      String?
+
+  assignment Assignment @relation(fields: [assignment_id], references: [id])
+  student    User       @relation(fields: [student_id], references: [id])
+
+  @@unique([assignment_id, student_id])
+  @@index([student_id])
+}
+
+model StudyGroup {
+  id         String   @id @default(uuid())
+  class_id   String
+  name       String
+  created_by String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  class   Class         @relation(fields: [class_id], references: [id])
+  creator User          @relation("GroupCreator", fields: [created_by], references: [id])
+  members GroupMember[]
+
+  @@index([class_id])
+}
+
+model GroupMember {
+  id         String @id @default(uuid())
+  group_id   String
+  student_id String
+
+  group   StudyGroup @relation(fields: [group_id], references: [id])
+  student User       @relation(fields: [student_id], references: [id])
+
+  @@unique([group_id, student_id])
+}
+
+model Note {
+  id         String   @id @default(uuid())
+  user_id    String
+  class_id   String?
+  title      String
+  content    String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  user  User   @relation(fields: [user_id], references: [id])
+  class Class? @relation(fields: [class_id], references: [id])
+
+  @@index([user_id])
+  @@index([class_id])
+}
+
+model Deadline {
+  id                    String         @id @default(uuid())
+  user_id               String
+  title                 String
+  due_date              DateTime
+  source                DeadlineSource
+  related_assignment_id String?
+  created_at            DateTime       @default(now())
+  updated_at            DateTime       @updatedAt
+
+  user       User        @relation(fields: [user_id], references: [id])
+  assignment Assignment? @relation(fields: [related_assignment_id], references: [id])
+
+  @@index([user_id, due_date])
+}

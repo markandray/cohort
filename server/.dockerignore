@@ -1,0 +1,9 @@
+node_modules
+dist
+*.log
+coverage
+.git
+.env
+.env.test
+.env.local
+cookies*.txt
