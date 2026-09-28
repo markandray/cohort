@@ -1,6 +1,13 @@
 import request from 'supertest';
 import app from '../app';
 import { createUser, createClass, enrollStudent, authHeader } from './helpers';
+import { prisma } from '../config/database';
+import redis from '../config/redis';
+
+afterAll(async () => {
+  await redis.quit();
+  await prisma.$disconnect();
+});
 
 describe('GET /api/classes', () => {
   it('STUDENT sees only classes they are enrolled in', async () => {
