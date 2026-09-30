@@ -13,3 +13,9 @@ build/
 *.log
 
 cookies*.txt
+
+terraform/.terraform/
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/*.tfvars
+*.pkg

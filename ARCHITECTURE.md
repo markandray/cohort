@@ -2,6 +2,9 @@
 
 A running log of the "why" behind each major decision. Updated as the project evolves.
 
+See also: [Tooling & CI Decisions](#tooling--ci-decisions) below, for
+build/test/deploy-process decisions as opposed to application architecture.
+
 ## 1. Repo Structure — Monorepo
 **Decision:** Single repo with `/client` and `/server` folders, not separate repos.
 **Why:** Solo developer, no independent deploy cadence or team boundary that would
@@ -183,3 +186,149 @@ refresh cookie's mere presence, which isn't a real auth check. A client-side
 hook, running after `AuthProvider`'s silent-refresh resolves, has the actual
 answer. Choosing the weaker (middleware) approach here would silently
 undermine the in-memory-token decision it should be built on top of.
+
+## 18. Class listing — backend-enforced role scoping, not a frontend filter
+**Decision:** `GET /api/classes` branches its Prisma query by the caller's
+role: `STUDENT` sees only classes they're enrolled in, `TEACHER` sees only
+classes they teach, `ADMIN` sees everything, unfiltered. The existing
+ID-based `POST /:id/enroll` endpoint was kept as-is rather than deprecated
+once class-code joining shipped.
+**Why:** Before this, any authenticated user could list — and then
+self-enroll in — any class on the platform, since `listClasses` returned
+everything unscoped. That's an unconventional design for a classroom app
+(Google Classroom/Canvas don't let you browse a directory of every class
+in the system) and made the class-code join flow a decorative shortcut
+sitting next to a wide-open front door rather than the actual intended
+discovery mechanism. The fix belongs in the service layer, not the
+frontend, per decision #14's reasoning — a filtered UI is cosmetic if the
+API itself still hands out everything to anyone who asks. `POST /:id/enroll`
+stayed rather than being removed: a student who already knows a class ID
+(e.g., shared outside the app) has no compelling reason to be blocked from
+joining it, and removing a working endpoint isn't free — that's a separate
+decision from closing the *listing* leak.
+
+## 19. Production Docker images — multi-stage builds, Alpine base
+**Decision:** Both `server/Dockerfile` and `client/Dockerfile` use a
+three-stage build (`deps` → `build` → `runtime`), with the runtime stage
+copying only compiled output and production dependencies. Both use
+`node:20-alpine` as the base image.
+**Why:** Alpine is the classic trap for Prisma projects — the native
+query-engine binary Prisma normally downloads doesn't reliably support
+Alpine's musl libc, and it's a common source of "works on my machine, fails
+in the container" bugs. That risk doesn't apply here because of decision
+#9: Cohort already uses Prisma's driver-adapter pattern (`@prisma/adapter-pg`
++ `pg`), which never fetches a platform-specific query-engine binary in the
+first place. Multi-stage builds keep the shipped runtime image small — dev
+dependencies, TypeScript source, and the Prisma CLI never make it past the
+`build` stage.
+
+## 20. `NEXT_PUBLIC_API_URL` — a Docker build arg, not a runtime env var
+**Decision:** The client Dockerfile declares `NEXT_PUBLIC_API_URL` as a
+build `ARG`, set as an `ENV` only for the duration of `next build`, and
+passed in via Compose's `build.args` — not as a `runtime` environment
+variable on the running container.
+**Why:** Next.js inlines every `NEXT_PUBLIC_*` variable directly into the
+compiled JavaScript bundle at build time; it is not read from `process.env`
+when the container starts. Setting it as a normal runtime environment
+variable (the instinctive Docker default) would silently do nothing — the
+browser bundle would still contain whatever value was present, or absent,
+at build time. This is a real Next.js/Docker gotcha worth being able to
+explain, not an arbitrary Dockerfile choice.
+
+## 21. Production migrations — a separate step, never automatic on app boot
+**Decision:** The compiled server image never runs `prisma migrate deploy`
+on startup. Migrations are applied as an explicit, separate step — today
+that's a manual `npx prisma migrate deploy` run against the Compose
+database; once deployed to ECS, the plan is a one-off Fargate task using
+the same image with its command overridden, run before the long-running
+app service is updated.
+**Why:** ECS can and does run multiple instances of a service concurrently
+even briefly during a routine rolling deployment. If every booting container
+tried to apply pending migrations on startup, two containers starting near-
+simultaneously could race to alter the same schema at once — a subtle,
+hard-to-reproduce production bug. Decoupling "apply schema changes" from
+"start serving traffic" removes that race by construction, the same
+category of fix as decision #15's DB-constraint-over-pre-check reasoning.
+
+## 22. Two real Docker build bugs — and what they revealed
+**Decision:** Two issues surfaced getting the server image to build and run,
+both fixed inside the Dockerfile rather than by changing application code:
+(1) `prisma.config.ts`'s `env("DATABASE_URL")` is resolved eagerly the
+moment the config file loads — even for `prisma generate`, which needs no
+real database connection at all — so the `build` stage sets a dummy,
+never-used `DATABASE_URL` just to satisfy that eager check; (2) `tsc` only
+compiles `.ts` files, so `src/graphql/schema.graphql` was never copied into
+`dist/`, crashing `typeDefs.ts`'s `readFileSync` call at runtime — fixed
+with an explicit `cp` step after `npm run build`.
+**Why:** Both are worth documenting because they weren't Docker-specific
+bugs in disguise — they were latent bugs in the plain `npm run build` /
+`node dist/index.js` path that had simply never been exercised before,
+since local development always ran through `ts-node-dev` against `src/`
+directly. Containerizing the app was what finally ran the real production
+build path for the first time and surfaced both.
+
+---
+
+# Tooling & CI Decisions
+
+A separate log for decisions about how the project is built, tested, and
+deployed — as opposed to the architecture decisions above, which are about
+what Cohort itself does.
+
+## T1. Dev and prod Docker Compose kept fully separate
+**Decision:** `docker-compose.yml` (Postgres + Redis only, for fast local
+iteration against `npm run dev:server`/`dev:client`) and
+`docker-compose.prod.yml` (all four services, built from the real production
+Dockerfiles) are two independent files, each declaring its own Compose
+`name` so they can never collide.
+**Why:** Containerized hot-reload for day-to-day development wasn't worth
+trading away — rebuilding an image on every source change is slower than
+`ts-node-dev`/`next dev`'s native reload, with no compensating benefit for
+a solo developer. Production images are a genuinely separate concern (small,
+immutable, security-hardened) best verified on their own before anything
+touches AWS. The explicit `name:` field exists because of a real incident:
+without it, both files shared the same default Compose project name and
+identical service names (`postgres`, `redis`), so running the prod stack
+silently replaced the running dev containers — dev data survived only
+because it lived in a separate named volume, not because the collision was
+harmless.
+
+## T2. CI test environment — plain values, not GitHub Secrets
+**Decision:** The GitHub Actions test job sets `DATABASE_URL`,
+`REDIS_URL`, `JWT_ACCESS_SECRET`, and `JWT_REFRESH_SECRET` as plain,
+hardcoded environment variables in the workflow file, pointing at
+short-lived Postgres/Redis service containers spun up for that run only.
+**Why:** None of these values are real credentials — the database and
+Redis instance are destroyed the moment the job finishes, and the JWT
+secrets sign tokens nobody but that same ephemeral run will ever verify.
+GitHub Secrets exist to keep genuinely sensitive values (real AWS
+credentials, the actual production JWT secrets) out of workflow logs and
+history — using them here would add process overhead without adding any
+real protection. This is a deliberate contrast with how AWS authentication
+is planned (OIDC federation, no long-lived keys stored anywhere) once the
+ECR push stage is built.
+
+## T3. CI test job — service containers, not a mocked database
+**Decision:** The `test` job runs real `postgres:16` and `redis:7-alpine`
+containers as GitHub Actions services, applies actual Prisma migrations via
+`prisma migrate deploy`, then runs the full Jest suite against them — no
+mocking of the database or cache layer.
+**Why:** Consistent with how local tests already worked (`server/.env.test`
+pointing at the same Docker Compose Postgres/Redis used for dev), and it
+means CI genuinely proves the same thing local `npm test` proves: that
+migrations apply cleanly to an empty database and the app behaves correctly
+against a real Postgres/Redis, not against a mocked approximation of one.
+
+## T4. Docker build verification runs in CI, but doesn't push anywhere
+**Decision:** A `docker-build` job runs after `test` passes, building both
+the server and client production images with `push: false` — proving they
+build successfully on every push/PR, without publishing anything to a
+registry.
+**Why:** Catches Docker-specific build failures (like the two documented in
+decision #22) at commit time, before they'd otherwise surface only when
+someone runs `docker compose -f docker-compose.prod.yml up --build`
+locally, or worse, at actual deploy time. Actually pushing to ECR is
+deliberately deferred to a second, manually-triggered workflow stage, built
+only after Terraform provisions the ECR repositories and the IAM role
+GitHub Actions will assume — provisioning AWS resources by hand ahead of
+Terraform would undermine the point of managing infrastructure as code.
