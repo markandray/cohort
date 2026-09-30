@@ -17,9 +17,13 @@ resource "aws_iam_openid_connect_provider" "github" {
   }
 }
 
-# The role GitHub Actions will assume. Trust policy restricts *which*
-# GitHub repo (and which branch/ref) can assume it — not just "anyone
-# with a GitHub Actions OIDC token", which would be far too broad.
+# The role GitHub Actions will assume. Trust policy restricts this to
+# runs of push-to-ecr.yml specifically on main, matched against this
+# repo's immutable numeric IDs (not its current name) — this is the
+# subject-claim format this GitHub account/repo actually issues.
+# Note: scoped to ref:refs/heads/main exactly (StringEquals, not a
+# wildcard pattern) — a run from any other branch or tag will need
+# this condition updated.
 resource "aws_iam_role" "github_actions" {
   name = "${var.project_name}-github-actions-role"
 
@@ -35,9 +39,7 @@ resource "aws_iam_role" "github_actions" {
         Condition = {
           StringEquals = {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          }
-          StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:*"
+            "token.actions.githubusercontent.com:sub" = "repo:markandray@224986735/cohort@1392252379:ref:refs/heads/main"
           }
         }
       }
