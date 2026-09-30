@@ -33,3 +33,9 @@ variable "github_repo" {
   description = "GitHub repo allowed to assume the OIDC role, as owner/repo"
   default     = "markandray/cohort"
 }
+
+variable "db_password" {
+  type        = string
+  sensitive   = true
+  description = "Master password for the RDS PostgreSQL instance. Supply via -var or a gitignored .tfvars file, never commit."
+}

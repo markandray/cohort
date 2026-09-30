@@ -33,3 +33,11 @@ output "ecr_client_repository_url" {
 output "github_actions_role_arn" {
   value = aws_iam_role.github_actions.arn
 }
+
+output "rds_endpoint" {
+  value = aws_db_instance.main.endpoint
+}
+
+output "rds_address" {
+  value = aws_db_instance.main.address
+}
