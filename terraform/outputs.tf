@@ -21,3 +21,11 @@ output "rds_security_group_id" {
 output "redis_security_group_id" {
   value = aws_security_group.redis.id
 }
+
+output "ecr_server_repository_url" {
+  value = aws_ecr_repository.server.repository_url
+}
+
+output "ecr_client_repository_url" {
+  value = aws_ecr_repository.client.repository_url
+}
