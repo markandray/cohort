@@ -332,3 +332,23 @@ deliberately deferred to a second, manually-triggered workflow stage, built
 only after Terraform provisions the ECR repositories and the IAM role
 GitHub Actions will assume — provisioning AWS resources by hand ahead of
 Terraform would undermine the point of managing infrastructure as code.
+
+## T5. GitHub OIDC subject claims aren't a single universal format
+**Decision:** The IAM role's trust policy condition matches the exact
+`sub` claim GitHub Actions actually issues for this account/repo —
+`repo:markandray@224986735/cohort@1392252379:ref:refs/heads/main` — via
+`StringEquals`, rather than the commonly-documented
+`repo:owner/repo:ref:...` pattern matched with `StringLike`.
+**Why:** The first OIDC setup attempt used the classic, widely-documented
+subject format and failed every time with `Not authorized to perform
+sts:AssumeRoleWithWebIdentity`, despite the OIDC provider, IAM role, and
+trust policy all being independently verified correct via the AWS CLI.
+The actual cause only became visible by adding a temporary debug step that
+fetched and decoded the real JWT GitHub issued for a live run — it used a
+newer, immutable-ID-based subject format
+(`repo:owner@ownerID/repo@repoID:ref:...`) instead of the name-based one
+most tutorials and even AWS's own documentation examples show. This is a
+real lesson in debugging distributed auth failures: when every component
+checks out individually but the handshake still fails, stop reasoning
+about what *should* be true and inspect the actual artifact (the token
+itself) instead of the documentation's assumed shape of it.
