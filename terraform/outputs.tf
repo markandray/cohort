@@ -29,3 +29,7 @@ output "ecr_server_repository_url" {
 output "ecr_client_repository_url" {
   value = aws_ecr_repository.client.repository_url
 }
+
+output "github_actions_role_arn" {
+  value = aws_iam_role.github_actions.arn
+}
