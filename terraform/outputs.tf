@@ -41,3 +41,7 @@ output "rds_endpoint" {
 output "rds_address" {
   value = aws_db_instance.main.address
 }
+
+output "redis_private_ip" {
+  value = aws_instance.redis.private_ip
+}
