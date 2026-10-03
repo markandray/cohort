@@ -29,7 +29,7 @@ resource "aws_db_instance" "main" {
   multi_az            = false # single-AZ: this is a demo deployment, stood up and torn down per session, not a durability-critical workload
   publicly_accessible = false # defense in depth alongside the private subnet placement — no public IP even if a route existed
 
-  backup_retention_period = 0 # no automated backups — matches the "stand up, verify, destroy" lifecycle; nothing here needs to survive terraform destroy
+  backup_retention_period = 0    # no automated backups — matches the "stand up, verify, destroy" lifecycle; nothing here needs to survive terraform destroy
   skip_final_snapshot     = true # required alongside the above — otherwise `terraform destroy` fails waiting for a final snapshot
 
   deletion_protection = false # must be destroyable via `terraform destroy` without a manual override
@@ -46,5 +46,5 @@ resource "aws_security_group_rule" "rds_from_ecs" {
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.ecs.id
   security_group_id        = aws_security_group.rds.id
-  description               = "Allow Postgres from ECS tasks only"
+  description              = "Allow Postgres from ECS tasks only"
 }

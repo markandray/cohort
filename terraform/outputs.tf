@@ -45,3 +45,29 @@ output "rds_address" {
 output "redis_private_ip" {
   value = aws_instance.redis.private_ip
 }
+
+output "ecs_cluster_name" {
+  value = aws_ecs_cluster.main.name
+}
+
+output "ecs_server_service_name" {
+  value = aws_ecs_service.server.name
+}
+
+output "ecs_client_service_name" {
+  value = aws_ecs_service.client.name
+}
+
+output "cloudwatch_log_group_name" {
+  value = aws_cloudwatch_log_group.ecs.name
+}
+
+# A running Fargate task's public IP is assigned to its ENI at launch —
+# it's not a static Terraform-managed value, so it can't be a normal
+# output. Once you scale a service up, fetch it with:
+#
+#   aws ecs list-tasks --cluster <ecs_cluster_name> --service-name <service name>
+#   aws ecs describe-tasks --cluster <ecs_cluster_name> --tasks <task ARN from above>
+#     (look for the "networkInterfaceId" in the attachment details, then:)
+#   aws ec2 describe-network-interfaces --network-interface-ids <that ID>
+#     (the "Association.PublicIp" field is the task's public IP)

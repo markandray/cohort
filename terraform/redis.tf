@@ -41,5 +41,5 @@ resource "aws_security_group_rule" "redis_from_ecs" {
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.ecs.id
   security_group_id        = aws_security_group.redis.id
-  description               = "Allow Redis from ECS tasks only"
+  description              = "Allow Redis from ECS tasks only"
 }
