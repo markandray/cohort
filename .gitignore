@@ -19,3 +19,4 @@ terraform/terraform.tfstate
 terraform/terraform.tfstate.backup
 terraform/*.tfvars
 *.pkg
+terraform/terraform.tfstate.*.backup
