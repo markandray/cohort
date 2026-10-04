@@ -6,13 +6,13 @@ import {prisma} from '../config/database';
 import redis from '../config/redis';
 import { env } from '../config/env';
 
+import { Prisma } from '@prisma/client';
+import { hashInviteCode } from './invite.service';
+
 const SALT_ROUNDS = 10;
 
 const ACCESS_TOKEN_EXPIRY: SignOptions['expiresIn'] = '15m';
 const REFRESH_TOKEN_EXPIRY: SignOptions['expiresIn'] = '7d';
-
-const ALLOWED_SIGNUP_ROLES = ['STUDENT', 'TEACHER'] as const;
-type SignupRole = (typeof ALLOWED_SIGNUP_ROLES)[number];
 
 interface TokenPayload {
   userId: string;
@@ -35,39 +35,72 @@ function signRefreshToken(payload: TokenPayload, jti: string): string {
   );
 }
 
+
+function isUniqueViolation(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+}
+
 export async function signup(
   email: string,
   password: string,
   name: string,
-  role: SignupRole = 'STUDENT'
+  inviteCode?: string
 ) {
-  // Defense-in-depth: never trust callers to provide a valid role.
-  if (!ALLOWED_SIGNUP_ROLES.includes(role)) {
-    throw new Error('INVALID_ROLE');
-  }
-
   const normalizedEmail = email.trim().toLowerCase();
 
   const existing = await prisma.user.findUnique({
     where: { email: normalizedEmail },
   });
-
   if (existing) {
     throw new Error('EMAIL_TAKEN');
   }
 
+  // Hash outside the transaction so we don't hold a DB transaction open during bcrypt.
   const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
 
-  const user = await prisma.user.create({
-    data: {
-      email: normalizedEmail,
-      password_hash,
-      name,
-      role,
-    },
-  });
+  try {
+    // No invite: always a STUDENT. The role is never taken from the caller.
+    if (!inviteCode) {
+      const user = await prisma.user.create({
+        data: { email: normalizedEmail, password_hash, name, role: 'STUDENT' },
+      });
+      return issueTokens(user.id, user.role);
+    }
 
-  return issueTokens(user.id, user.role);
+    const user = await prisma.$transaction(async (tx) => {
+      const invite = await tx.invite.findUnique({
+        where: { token_hash: hashInviteCode(inviteCode) },
+      });
+      if (!invite || invite.used_at || invite.expires_at <= new Date()) {
+        throw new Error('INVALID_INVITE');
+      }
+
+      const created = await tx.user.create({
+        data: { email: normalizedEmail, password_hash, name, role: invite.role },
+      });
+
+      // The actual lock: a conditional update. If a concurrent signup already claimed
+      // this invite, this matches 0 rows and we throw, rolling back the user we just
+      // created. Exactly one redeemer can ever win.
+      const claimed = await tx.invite.updateMany({
+        where: { id: invite.id, used_at: null, expires_at: { gt: new Date() } },
+        data: { used_at: new Date(), used_by: created.id },
+      });
+      if (claimed.count !== 1) {
+        throw new Error('INVALID_INVITE');
+      }
+
+      return created;
+    });
+
+    return issueTokens(user.id, user.role);
+  } catch (err) {
+    // Lost a race on the email unique index between the pre-check and the insert.
+    if (isUniqueViolation(err)) {
+      throw new Error('EMAIL_TAKEN');
+    }
+    throw err;
+  }
 }
 
 export async function login(email: string, password: string) {

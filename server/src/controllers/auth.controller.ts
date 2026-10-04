@@ -17,16 +17,24 @@ function setRefreshCookie(res: Response, token: string) {
 }
 
 export async function signup(req: Request, res: Response) {
-  const { email, password, name } = req.body;
+  const { email, password, name, inviteCode } = req.body;
 
   if (!email || !password || !name) {
     return res.status(400).json({ error: 'email, password, and name are required' });
   }
 
+  // `role` in the body is deliberately ignored. The only way to get a privileged
+  // role is a valid invite, and the role comes from the invite row.
+  let code: string | undefined;
+  if (inviteCode !== undefined && inviteCode !== null && inviteCode !== '') {
+    if (typeof inviteCode !== 'string') {
+      return res.status(400).json({ error: 'Invalid or expired invite code' });
+    }
+    code = inviteCode.trim();
+  }
+
   try {
-    // Public signup always creates a STUDENT — role is never client-supplied here.
-    // TEACHER/ADMIN accounts are created through a separate, privileged flow.
-    const result = await authService.signup(email, password, name, 'STUDENT');
+    const result = await authService.signup(email, password, name, code);
     setRefreshCookie(res, result.refreshToken);
     return res.status(201).json({
       accessToken: result.accessToken,
@@ -36,8 +44,9 @@ export async function signup(req: Request, res: Response) {
     if (err instanceof Error && err.message === 'EMAIL_TAKEN') {
       return res.status(409).json({ error: 'An account with this email already exists' });
     }
-    if (err instanceof Error && err.message === 'INVALID_ROLE') {
-      return res.status(400).json({ error: 'Invalid signup role', });
+    // One generic message for unknown, expired and used codes, so it doesn't leak which.
+    if (err instanceof Error && err.message === 'INVALID_INVITE') {
+      return res.status(400).json({ error: 'Invalid or expired invite code' });
     }
     console.error('[auth] signup error:', err);
     return res.status(500).json({ error: 'Something went wrong' });

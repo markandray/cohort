@@ -4,6 +4,7 @@ import redis from '../config/redis';
 const TABLES = [
   'Deadline',
   'Note',
+  'Invite',
   'GroupMember',
   'StudyGroup',
   'Submission',

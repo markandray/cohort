@@ -1,6 +1,8 @@
+import { randomBytes } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/database';
 import { env } from '../config/env';
+import { hashInviteCode } from '../services/invite.service';
 
 let counter = 0;
 function unique(prefix: string) {
@@ -31,6 +33,27 @@ export async function createUser(role: 'STUDENT' | 'TEACHER' | 'ADMIN') {
       role,
     },
   });
+}
+
+export async function createInviteFor(
+  adminId: string,
+  role: 'TEACHER' | 'ADMIN',
+  overrides: Partial<{ expires_at: Date }> = {}
+) {
+  const code = randomBytes(32).toString('base64url');
+
+  const invite = await prisma.invite.create({
+    data: {
+      token_hash: hashInviteCode(code),
+      role,
+      created_by: adminId,
+      expires_at:
+        overrides.expires_at ??
+        new Date(Date.now() + 60 * 60 * 1000),
+    },
+  });
+
+  return { invite, code };
 }
 
 export function tokenFor(user: { id: string; role: string }) {

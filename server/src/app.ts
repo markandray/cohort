@@ -12,6 +12,7 @@ import { apolloServer, ensureApolloStarted } from './graphql/apollo';
 import { requireAuth } from './middleware/auth.middleware';
 import submissionRouter from './routes/submission.routes';
 import { env } from './config/env';
+import inviteRouter from './routes/invite.routes';
 
 const app: Application = express();
 
@@ -32,6 +33,7 @@ app.use('/api/assignments', assignmentRouter);
 app.use('/api/notes', noteRouter);
 app.use('/api/study-groups', studyGroupRouter);
 app.use('/api/submissions', submissionRouter);
+app.use('/api/invites', inviteRouter);
 
 let graphqlHandler: RequestHandler | null = null;
 
