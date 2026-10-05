@@ -37,8 +37,9 @@ with the TypeScript stack (generated types from schema) and generated SQL can
 still be inspected when deeper explanation is needed.
 
 ## 5. Roles — Student, Teacher, Admin (enum)
-**Decision:** `User.role` as an enum: `STUDENT | TEACHER | ADMIN`. Admin isn't
-in the MVP UI but exists in the schema.
+**Decision:** `User.role` as an enum: `STUDENT | TEACHER | ADMIN`. Admin now has
+an invite-management UI (see #23); the rest of the admin surface is still the
+dashboard stats.
 **Why:** "Class management" requires someone creating classes/assignments —
 a single-role model doesn't fit the domain. Admin is cheap to include now,
 expensive to retrofit later if platform-level management is ever needed.
@@ -67,6 +68,8 @@ client. Documents a real Prisma limitation and how it was worked around.
 Submission, StudyGroup, GroupMember, Note, Deadline`. Deliberately excluded
 for now: Notifications, Messages, Attendance, Calendar, Quizzes,
 CourseMaterials, Grades (separate from Submission.grade), Comments, AI tables.
+`Invite` was added later, when the privileged-account-creation feature was
+actually built (see #23).
 **Why:** Add tables when features are actually being built, not speculatively.
 Avoids an over-engineered schema for a product that doesn't exist yet.
 
@@ -122,17 +125,19 @@ instantly — acceptable for this app, and worth being able to explain as a
 real security/performance tradeoff rather than an oversight.
 
 ## 13. Role enforcement — defense in depth, not just at the route
-**Decision:** Signup only ever creates `STUDENT` accounts — the client cannot
-choose a role, not even from an allow-list. `TEACHER`/`ADMIN` creation is
-deferred to a future Admin feature (manual DB promotion in the meantime).
-The allowed-roles check additionally exists in the service layer (not just
-the controller), so any future caller of `authService.signup()` — a script,
-a CLI, another route — can't bypass it by skipping the HTTP layer.
-**Why:** A privilege-escalation-at-signup bug is exactly the kind of thing
-that's cheap to prevent now and expensive to discover later. Defense in depth
-(same rule enforced at two layers) is a real pattern worth demonstrating, not
-redundant work — the controller guards the common path, the service guards
-against any path.
+**Decision:** Public signup can only ever create `STUDENT` accounts, and the
+client never chooses a role: any `role` field in the request body is ignored.
+`TEACHER`/`ADMIN` accounts come only from a valid invite (see #23), and the
+role is read from the invite row, not from the caller. `authService.signup()`
+no longer accepts a role parameter at all, so no caller (a script, a CLI,
+another route) can request a privileged role by skipping the HTTP layer.
+**Why:** A privilege-escalation-at-signup bug is cheap to prevent now and
+expensive to discover later. The original version of this decision enforced an
+allow-list of roles at two layers (controller and service). Invites made a
+stronger version possible: remove the role input entirely, so there is nothing
+to validate or bypass. The defense-in-depth principle stays (see #26 for the
+layers on privileged roles); the mechanism got simpler. Supersedes the earlier
+"manual DB promotion in the meantime" plan.
 
 ## 14. Ownership checks live in the service layer, not the controller
 **Decision:** `requireRole('TEACHER', 'ADMIN')` middleware proves *a* teacher
@@ -267,6 +272,92 @@ since local development always ran through `ts-node-dev` against `src/`
 directly. Containerizing the app was what finally ran the real production
 build path for the first time and surfaced both.
 
+## 23. Privileged account creation — admin-issued invite codes
+**Decision:** `TEACHER` and `ADMIN` accounts are created by signing up with a
+valid invite code. Only an authenticated `ADMIN` can create, list, or revoke
+invites (`/api/invites`, gated by `requireRole('ADMIN')`). Each invite is
+single-use, role-bound, and expiring (1 hour to 30 days, 72 hours by default).
+`STUDENT` stays public signup with no invite. Promoting an existing user's
+role is deliberately not built yet.
+**Why:** Three options were weighed. *Admin promotes existing users* is the
+simplest, but a teacher has to exist as a student first, and there is no way to
+create someone in the right role from the start. *Self-signup with an approval
+queue* is the most realistic, but it needs a pending state, a review UI, and
+notifications, which is far more scope than the gap justified. *Invite codes*
+fit the app's existing vocabulary (class codes already work this way), need no
+email infrastructure, and make the privileged role something an admin
+explicitly grants, not something a user requests. Known tradeoffs: an admin can
+mint other admin invites (acceptable, and still admin-only), codes are
+delivered out of band by the admin, and there is no rate limiting on
+`/signup` today (see #24 for why guessing a code is still infeasible).
+
+## 24. Invite codes — 256 bits of randomness, stored as a SHA-256 hash, shown once
+**Decision:** Codes are `crypto.randomBytes(32)` encoded as base64url. Only
+`SHA-256(code)` is stored (`Invite.token_hash`, unique). The raw code exists
+only in the create response (sent with `Cache-Control: no-store`) and, on the
+client, only in React state. It cannot be recovered afterward.
+**Why:** Storing only a hash means a database leak does not leak usable
+invites, the same reasoning as password hashing. But SHA-256 and not bcrypt:
+bcrypt is deliberately slow to make brute-forcing *low-entropy* secrets
+(human-chosen passwords) expensive. A 256-bit random code has nothing to
+brute-force, and we need a *deterministic* hash so the invite can be looked up
+by it, which a salted bcrypt hash cannot do. This is a good example of
+matching the primitive to the threat model, not applying "bcrypt everything."
+
+## 25. Invite redemption — one transaction, a conditional update as the lock
+**Decision:** Signup with an invite runs inside a single `prisma.$transaction`:
+look up the invite by hash, create the user, then claim the invite with
+`updateMany({ where: { id, used_at: null, expires_at: { gt: now } } })`. If the
+update matches anything other than exactly one row, the transaction throws and
+the just-created user is rolled back. A concurrent test asserts that two
+simultaneous signups with one code produce exactly one user.
+**Why:** A check-then-update ("is it unused? then mark it used") has the same
+race as decision #15: two requests can both pass the check before either
+writes. The conditional `UPDATE` makes the claim atomic: under Postgres'
+default isolation, the second transaction blocks on the first's row lock, then
+re-evaluates the `WHERE` and finds `used_at` already set, matching zero rows.
+The user creation shares the transaction so a failed claim leaves no orphan
+account, and a taken email (caught as `P2002`, see #15) leaves the invite
+unburned.
+
+## 26. Role integrity on privileged accounts — three independent layers
+**Decision:** (1) The service reads the new user's role only from the invite
+row, never from request input. (2) Invite creation validates the role against
+`TEACHER | ADMIN`, so a `STUDENT` invite cannot be created through the API.
+(3) A hand-written `CHECK ("role" IN ('TEACHER','ADMIN'))` on `Invite.role`,
+added via a `--create-only` migration as in decision #10, makes the database
+reject a `STUDENT` invite even if the API has a bug. Unknown, expired, and
+already-used codes all return one identical error message.
+**Why:** Same principle as #7 and #13: the database is the final source of
+truth and the app layer gives the friendly path. The single generic error
+avoids turning signup into an oracle that tells an attacker whether a guessed
+code exists, has expired, or has been used.
+
+## 27. First admin — a bootstrap script, never a public endpoint
+**Decision:** The first `ADMIN` is created by `npm run create-admin`, reading
+`ADMIN_EMAIL`/`ADMIN_PASSWORD` from the environment. It is idempotent
+(re-running for an existing admin does nothing), refuses to touch an existing
+non-admin account, and requires a password of at least 12 characters. It does
+not import the app's `env` config, so it needs only `DATABASE_URL`. In
+production it is planned to run as a one-off ECS task with the command
+overridden, the same pattern as migrations in decision #21.
+**Why:** Every privilege system has a chicken-and-egg problem: invites need an
+admin, and an admin needs an invite. Solving it with an HTTP endpoint (even a
+"first user only" one) creates an attack surface that exists in production
+forever to solve a problem that occurs once. A script confines the privilege
+to whoever already has infrastructure access. Refusing to silently promote an
+existing account prevents the script from becoming an accidental
+privilege-escalation tool.
+
+## 28. Client-side role gating is UX, not security
+**Decision:** The `/admin/invites` page redirects non-admins to `/dashboard`,
+and the nav hides the Invites link from non-admins. Neither is relied on for
+protection; every invite API route independently enforces `ADMIN` server-side.
+**Why:** Anyone can edit client code or call the API directly. The redirect and
+the hidden link only keep legitimate users from landing on a page that would
+fail. This is the same layering as decisions #17 and #18: the client improves
+the experience, the server holds the line.
+
 ---
 
 # Tooling & CI Decisions
@@ -352,3 +443,14 @@ real lesson in debugging distributed auth failures: when every component
 checks out individually but the handshake still fails, stop reasoning
 about what *should* be true and inspect the actual artifact (the token
 itself) instead of the documentation's assumed shape of it.
+
+## T6. Schema changes break every test suite until the test DB is migrated
+**Decision:** Adding the `Invite` table also meant adding it to `resetDb()`'s
+`TRUNCATE` list, and the new migration had to be applied to the test database
+(`prisma migrate deploy` against `.env.test`) before any suite could pass.
+**Why:** The first run after adding the feature failed all seven suites, not
+just the new one: `resetDb()` truncated a table that did not exist yet in the
+test DB, which failed every suite's setup. A leftover-state side effect then
+also surfaced as unrelated `class_code` collisions. CI avoids this by
+construction (decision T3: it applies real migrations to an empty database on
+every run), but local test databases drift if migrations are not applied.
