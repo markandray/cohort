@@ -13,13 +13,14 @@ export default function SignupPage() {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
     try {
-      await signup(email, password, name);
+      await signup(email, password, name, inviteCode);
       router.push('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
@@ -34,11 +35,19 @@ export default function SignupPage() {
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <input
           type="text"
-          placeholder="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+          placeholder="Invite code (teachers and admins only)"
+          value={inviteCode}
+          onChange={(e) => setInviteCode(e.target.value)}
           className="border rounded px-3 py-2"
-          required
+          autoComplete="off"
+        />
+        <input
+        type="text"
+        placeholder="Name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        className="border rounded px-3 py-2"
+         required
         />
         <input
           type="email"

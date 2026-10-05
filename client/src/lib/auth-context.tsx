@@ -11,7 +11,8 @@ interface User {
 interface AuthContextValue {
   user: User | null;
   isLoading: boolean;
-  signup: (email: string, password: string, name: string) => Promise<void>;
+  // in AuthContextValue
+  signup: (email: string, password: string, name: string, inviteCode?: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -38,16 +39,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tryRestoreSession();
   }, []);
 
-  async function signup(email: string, password: string, name: string) {
+  async function signup(email: string, password: string, name: string, inviteCode?: string) {
     const res = await apiFetch('/api/auth/signup', {
       method: 'POST',
       skipAuth: true,
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify({
+        email,
+        password,
+        name,
+        ...(inviteCode?.trim() ? { inviteCode: inviteCode.trim() } : {}),
+      }),
     });
+
     if (!res.ok) {
       const data = await res.json();
       throw new Error(data.error || 'Signup failed');
     }
+
     const data = await res.json();
     setAccessToken(data.accessToken);
     setUser(data.user);

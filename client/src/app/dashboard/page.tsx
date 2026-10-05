@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRequireAuth } from '@/lib/use-require-auth';
 import { gqlFetch } from '@/lib/gql-client';
+import Link from 'next/link';
 
 interface DashboardClassSummary {
   id: string;
@@ -290,13 +291,16 @@ function AdminDashboardView({ data }: { data: AdminDashboard }) {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-4">
-      {stats.map(([label, value]) => (
-        <div key={label} className="border rounded px-4 py-2">
-          <div className="text-sm text-gray-500">{label}</div>
-          <div className="text-2xl font-bold">{value}</div>
-        </div>
-      ))}
+    <div className="space-y-6">
+ 
+     <div className="grid grid-cols-2 gap-4">
+        {stats.map(([label, value]) => (
+          <div key={label} className="border rounded px-4 py-2">
+            <div className="text-sm text-gray-500">{label}</div>
+            <div className="text-2xl font-bold">{value}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

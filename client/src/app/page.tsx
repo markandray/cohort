@@ -4,31 +4,21 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 
 export default function Home() {
-  const { user, isLoading, logout } = useAuth();
+  const { user, isLoading } = useAuth();
 
   if (isLoading) {
     return <p className="text-center mt-16">Loading...</p>;
   }
 
   return (
-    <div className="max-w-sm mx-auto mt-16 text-center">
+    <div className="max-w-sm mx-auto mt-16 text-center space-y-4">
+      <h1 className="text-2xl font-bold">Cohort</h1>
       {user ? (
-        <>
-          <p className="mb-4">
-            Logged in as <strong>{user.role}</strong> (id: {user.id})
-          </p>
-          <button onClick={logout} className="bg-black text-white rounded px-3 py-2">
-            Log out
-          </button>
-        </>
+        <Link href="/dashboard" className="inline-block bg-black text-white rounded px-3 py-2">
+          Go to dashboard
+        </Link>
       ) : (
-        <>
-          <p className="mb-4">Not logged in</p>
-          <div className="flex gap-3 justify-center">
-            <Link href="/login" className="underline">Log in</Link>
-            <Link href="/signup" className="underline">Sign up</Link>
-          </div>
-        </>
+        <p className="text-gray-600">Log in or sign up to get started.</p>
       )}
     </div>
   );
