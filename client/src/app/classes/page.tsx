@@ -1,9 +1,12 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { useRequireAuth } from '@/lib/use-require-auth';
+import { Button } from '@/components/ui/button';
+import { Card, ListCard, ListRow } from '@/components/ui/card';
+import { Input } from '@/components/ui/form';
+import { Empty, PageContainer, PageHeader } from '@/components/ui/page';
 
 interface ClassListItem {
   id: string;
@@ -31,26 +34,30 @@ export default function ClassesPage() {
 
   const isStudent = user?.role === 'STUDENT';
 
-  async function loadClasses() {
-    try {
-      const res = await apiFetch('/api/classes');
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to load classes');
-      }
-      const data = await res.json();
-      setClasses(data.classes);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
-    } finally {
-      setIsLoading(false);
-    }
-  }
+  // Bumping this re-runs the loading effect (used after a successful join).
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!user) return;
+
+    async function loadClasses() {
+      try {
+        const res = await apiFetch('/api/classes');
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to load classes');
+        }
+        const data = await res.json();
+        setClasses(data.classes);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Something went wrong');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
     loadClasses();
-  }, [user]);
+  }, [user, reloadKey]);
 
   async function handleJoin() {
     setJoinFieldError(null);
@@ -81,79 +88,94 @@ export default function ClassesPage() {
       setJoinedClassName(data.class?.name ?? null);
       setJoinStatus('success');
       setClassCode('');
-      await loadClasses();
+      setReloadKey((k) => k + 1);
     } catch (err) {
       setJoinStatus('error');
       setJoinError(err instanceof Error ? err.message : 'Something went wrong');
     }
   }
 
-  if (authLoading || !user) {
-    return <p className="text-center mt-16">Loading...</p>;
-  }
-
-  if (isLoading) {
-    return <p className="text-center mt-16">Loading classes...</p>;
+  if (authLoading || !user || isLoading) {
+    return (
+      <PageContainer width="md">
+        <p className="text-muted">Loading...</p>
+      </PageContainer>
+    );
   }
 
   if (error) {
-    return <p className="text-center mt-16 text-red-600">{error}</p>;
+    return (
+      <PageContainer width="md">
+        <p role="alert" className="text-danger">
+          {error}
+        </p>
+      </PageContainer>
+    );
   }
 
   return (
-    <div className="max-w-2xl mx-auto mt-16 px-4">
-      <h1 className="text-xl font-semibold mb-6">Classes</h1>
+    <PageContainer width="md">
+      <PageHeader
+        title="Classes"
+        description={isStudent ? 'Classes you are enrolled in.' : undefined}
+      />
 
       {isStudent && (
-        <div className="mb-8">
-          <h2 className="text-lg font-medium mb-3">Join a Class</h2>
-          <div className="border rounded px-4 py-3 flex flex-col gap-3">
-            {joinStatus === 'success' && (
-              <p className="text-green-600 text-sm">
-                Joined {joinedClassName ?? 'the class'} successfully.
-              </p>
-            )}
-            {joinStatus === 'error' && joinError && (
-              <p className="text-red-600 text-sm">{joinError}</p>
-            )}
-
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={classCode}
-                onChange={(e) => setClassCode(e.target.value)}
-                placeholder="Enter class code"
-                className="border rounded px-3 py-2 flex-1 uppercase"
-              />
-              <button
-                onClick={handleJoin}
-                disabled={joinStatus === 'submitting'}
-                className="bg-black text-white rounded px-3 py-2 disabled:opacity-50"
-              >
-                {joinStatus === 'submitting' ? 'Joining...' : 'Join'}
-              </button>
-            </div>
-            {joinFieldError && <p className="text-red-600 text-sm">{joinFieldError}</p>}
-          </div>
-        </div>
+        <Card className="mb-8 p-4">
+          <h2 className="text-sm font-semibold">Join a class</h2>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleJoin();
+            }}
+            className="mt-3 flex gap-2"
+          >
+            <Input
+              type="text"
+              value={classCode}
+              onChange={(e) => setClassCode(e.target.value)}
+              placeholder="Enter class code"
+              aria-label="Class code"
+              autoComplete="off"
+              className="flex-1 uppercase"
+            />
+            <Button type="submit" disabled={joinStatus === 'submitting'}>
+              {joinStatus === 'submitting' ? 'Joining...' : 'Join'}
+            </Button>
+          </form>
+          {joinFieldError && <p className="mt-2 text-sm text-danger">{joinFieldError}</p>}
+          {joinStatus === 'error' && joinError && (
+            <p role="alert" className="mt-2 text-sm text-danger">
+              {joinError}
+            </p>
+          )}
+          {joinStatus === 'success' && (
+            <p className="mt-2 text-sm text-success">
+              Joined {joinedClassName ?? 'the class'} successfully.
+            </p>
+          )}
+        </Card>
       )}
 
       {classes.length === 0 ? (
-        <p className="text-gray-500">No classes yet.</p>
+        <Empty>
+          {isStudent
+            ? 'You are not enrolled in any classes yet. Enter a class code above to join one.'
+            : 'No classes yet.'}
+        </Empty>
       ) : (
-        <div className="flex flex-col gap-3">
+        <ListCard>
           {classes.map((c) => (
-            <Link
+            <ListRow
               key={c.id}
               href={`/classes/${c.id}`}
-              className="border rounded px-4 py-3 hover:bg-gray-50 transition-colors"
-            >
-              <p className="font-medium">{c.name}</p>
-              <p className="text-sm text-gray-500">Taught by {c.teacher.name}</p>
-            </Link>
+              primary={c.name}
+              secondary={`Taught by ${c.teacher.name}`}
+              trailing={<span className="text-muted">,</span>}
+            />
           ))}
-        </div>
+        </ListCard>
       )}
-    </div>
+    </PageContainer>
   );
 }

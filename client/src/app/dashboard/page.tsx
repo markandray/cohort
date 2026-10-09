@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRequireAuth } from '@/lib/use-require-auth';
 import { gqlFetch } from '@/lib/gql-client';
-import Link from 'next/link';
+import { Badge, ListCard, ListRow, Stat } from '@/components/ui/card';
+import { Empty, PageContainer, PageHeader, Section } from '@/components/ui/page';
 
 interface DashboardClassSummary {
   id: string;
@@ -106,6 +107,8 @@ const DASHBOARD_QUERY = `
   }
 `;
 
+const formatDate = (iso: string) => new Date(iso).toLocaleDateString();
+
 export default function DashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
   useRequireAuth();
@@ -132,11 +135,21 @@ export default function DashboardPage() {
   }, [user]);
 
   if (authLoading || isLoading) {
-    return <div className="p-8">Loading...</div>;
+    return (
+      <PageContainer>
+        <p className="text-muted">Loading...</p>
+      </PageContainer>
+    );
   }
 
   if (error) {
-    return <div className="p-8 text-red-600">{error}</div>;
+    return (
+      <PageContainer>
+        <p role="alert" className="text-danger">
+          {error}
+        </p>
+      </PageContainer>
+    );
   }
 
   if (!dashboard) {
@@ -144,8 +157,8 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-8 max-w-4xl mx-auto space-y-8">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
+    <PageContainer>
+      <PageHeader title="Dashboard" />
 
       {dashboard.role === 'STUDENT' && dashboard.student && (
         <StudentDashboardView data={dashboard.student} />
@@ -158,124 +171,160 @@ export default function DashboardPage() {
       {dashboard.role === 'ADMIN' && dashboard.admin && (
         <AdminDashboardView data={dashboard.admin} />
       )}
-    </div>
+    </PageContainer>
   );
 }
 
 function StudentDashboardView({ data }: { data: StudentDashboard }) {
   return (
-    <div className="space-y-6">
-      <section>
-        <h2 className="text-lg font-semibold mb-2">My Classes ({data.classCount})</h2>
-        <ul className="space-y-1">
-          {data.classes.map((c) => (
-            <li key={c.id} className="border rounded px-4 py-2">{c.name}</li>
-          ))}
-        </ul>
-      </section>
-
-      <section>
-        <h2 className="text-lg font-semibold mb-2">Upcoming Assignments</h2>
-        {data.upcomingAssignments.length === 0 ? (
-          <p className="text-gray-500">Nothing due in the next 7 days.</p>
-        ) : (
-          <ul className="space-y-1">
-            {data.upcomingAssignments.map((a) => (
-              <li key={a.id} className="border rounded px-4 py-2">
-                {a.title} — {a.className} (due {new Date(a.dueDate).toLocaleDateString()})
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Stat label="Classes" value={data.classCount} />
+        <Stat label="Study groups" value={data.studyGroupCount} />
+        <Stat label="Notes" value={data.noteCount} />
+      </div>
 
       {data.overdueAssignments.length > 0 && (
-        <section>
-          <h2 className="text-lg font-semibold mb-2 text-red-600">Overdue</h2>
-          <ul className="space-y-1">
+        <Section title="Overdue" count={data.overdueAssignments.length}>
+          <ListCard>
             {data.overdueAssignments.map((a) => (
-              <li key={a.id} className="border border-red-300 rounded px-4 py-2">
-                {a.title} — {a.className} (was due {new Date(a.dueDate).toLocaleDateString()})
-              </li>
+              <ListRow
+                key={a.id}
+                href={`/assignments/${a.id}`}
+                primary={a.title}
+                secondary={`${a.className} · was due ${formatDate(a.dueDate)}`}
+                trailing={<Badge tone="danger">Overdue</Badge>}
+              />
             ))}
-          </ul>
-        </section>
+          </ListCard>
+        </Section>
       )}
 
-      <section>
-        <h2 className="text-lg font-semibold mb-2">Current Grades</h2>
-        {data.currentGrades.length === 0 ? (
-          <p className="text-gray-500">No grades yet.</p>
+      <Section title="Upcoming">
+        {data.upcomingAssignments.length === 0 ? (
+          <Empty>Nothing due in the next 7 days.</Empty>
         ) : (
-          <ul className="space-y-1">
-            {data.currentGrades.map((g) => (
-              <li key={g.submissionId} className="border rounded px-4 py-2">
-                {g.assignmentTitle}: {g.grade}
-                {g.feedback && <span className="text-gray-500"> — {g.feedback}</span>}
-              </li>
+          <ListCard>
+            {data.upcomingAssignments.map((a) => (
+              <ListRow
+                key={a.id}
+                href={`/assignments/${a.id}`}
+                primary={a.title}
+                secondary={a.className}
+                trailing={<Badge tone="warning">Due {formatDate(a.dueDate)}</Badge>}
+              />
             ))}
-          </ul>
+          </ListCard>
         )}
-      </section>
+      </Section>
 
-      <section>
-        <h2 className="text-lg font-semibold mb-2">Study Groups ({data.studyGroupCount})</h2>
-        <ul className="space-y-1">
-          {data.studyGroups.map((g) => (
-            <li key={g.id} className="border rounded px-4 py-2">{g.name} — {g.className}</li>
-          ))}
-        </ul>
-      </section>
+      <Section title="Current grades">
+        {data.currentGrades.length === 0 ? (
+          <Empty>No grades yet.</Empty>
+        ) : (
+          <ListCard>
+            {data.currentGrades.map((g) => (
+              <ListRow
+                key={g.submissionId}
+                primary={g.assignmentTitle}
+                secondary={g.feedback}
+                trailing={<span className="text-sm font-semibold tabular-nums">{g.grade}</span>}
+              />
+            ))}
+          </ListCard>
+        )}
+      </Section>
 
-      <section>
-        <h2 className="text-lg font-semibold">Notes: {data.noteCount}</h2>
-      </section>
+      <div className="grid gap-8 md:grid-cols-2">
+        <Section title="My classes" count={data.classCount}>
+          {data.classes.length === 0 ? (
+            <Empty>Not enrolled in any classes yet.</Empty>
+          ) : (
+            <ListCard>
+              {data.classes.map((c) => (
+                <ListRow key={c.id} href={`/classes/${c.id}`} primary={c.name} />
+              ))}
+            </ListCard>
+          )}
+        </Section>
+
+        <Section title="Study groups" count={data.studyGroupCount}>
+          {data.studyGroups.length === 0 ? (
+            <Empty>No study groups yet.</Empty>
+          ) : (
+            <ListCard>
+              {data.studyGroups.map((g) => (
+                <ListRow
+                  key={g.id}
+                  href={`/study-groups/${g.id}`}
+                  primary={g.name}
+                  secondary={g.className}
+                />
+              ))}
+            </ListCard>
+          )}
+        </Section>
+      </div>
     </div>
   );
 }
 
 function TeacherDashboardView({ data }: { data: TeacherDashboard }) {
   return (
-    <div className="space-y-6">
-      <section>
-        <h2 className="text-lg font-semibold mb-2">Classes Taught ({data.classCount})</h2>
-        <ul className="space-y-1">
-          {data.classes.map((c) => (
-            <li key={c.id} className="border rounded px-4 py-2">{c.name}</li>
-          ))}
-        </ul>
-      </section>
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Stat label="Classes taught" value={data.classCount} />
+        <Stat label="Awaiting grading" value={data.ungradedSubmissions.length} />
+        <Stat label="Due this week" value={data.upcomingAssignments.length} />
+      </div>
 
-      <section>
-        <h2 className="text-lg font-semibold mb-2">Ungraded Submissions</h2>
+      <Section title="Ungraded submissions">
         {data.ungradedSubmissions.length === 0 ? (
-          <p className="text-gray-500">Nothing needs grading.</p>
+          <Empty>Nothing needs grading.</Empty>
         ) : (
-          <ul className="space-y-1">
+          <ListCard>
             {data.ungradedSubmissions.map((s) => (
-              <li key={s.submissionId} className="border rounded px-4 py-2">
-                {s.studentName} — {s.assignmentTitle} ({s.className}), submitted{' '}
-                {new Date(s.submittedAt).toLocaleDateString()}
-              </li>
+              <ListRow
+                key={s.submissionId}
+                href={`/assignments/${s.assignmentId}`}
+                primary={`${s.studentName} · ${s.assignmentTitle}`}
+                secondary={`${s.className} · submitted ${formatDate(s.submittedAt)}`}
+                trailing={<Badge tone="warning">Needs grading</Badge>}
+              />
             ))}
-          </ul>
+          </ListCard>
         )}
-      </section>
+      </Section>
 
-      <section>
-        <h2 className="text-lg font-semibold mb-2">Upcoming Deadlines</h2>
+      <Section title="Upcoming deadlines">
         {data.upcomingAssignments.length === 0 ? (
-          <p className="text-gray-500">Nothing due in the next 7 days.</p>
+          <Empty>Nothing due in the next 7 days.</Empty>
         ) : (
-          <ul className="space-y-1">
+          <ListCard>
             {data.upcomingAssignments.map((a) => (
-              <li key={a.id} className="border rounded px-4 py-2">
-                {a.title} — {a.className} (due {new Date(a.dueDate).toLocaleDateString()})
-              </li>
+              <ListRow
+                key={a.id}
+                href={`/assignments/${a.id}`}
+                primary={a.title}
+                secondary={a.className}
+                trailing={<Badge>Due {formatDate(a.dueDate)}</Badge>}
+              />
             ))}
-          </ul>
+          </ListCard>
         )}
-      </section>
+      </Section>
+
+      <Section title="Classes taught" count={data.classCount}>
+        {data.classes.length === 0 ? (
+          <Empty>You are not teaching any classes yet.</Empty>
+        ) : (
+          <ListCard>
+            {data.classes.map((c) => (
+              <ListRow key={c.id} href={`/classes/${c.id}`} primary={c.name} />
+            ))}
+          </ListCard>
+        )}
+      </Section>
     </div>
   );
 }
@@ -287,20 +336,14 @@ function AdminDashboardView({ data }: { data: AdminDashboard }) {
     ['Admins', data.totalAdmins],
     ['Classes', data.totalClasses],
     ['Assignments', data.totalAssignments],
-    ['Ungraded Submissions', data.totalUngradedSubmissions],
+    ['Ungraded submissions', data.totalUngradedSubmissions],
   ];
 
   return (
-    <div className="space-y-6">
- 
-     <div className="grid grid-cols-2 gap-4">
-        {stats.map(([label, value]) => (
-          <div key={label} className="border rounded px-4 py-2">
-            <div className="text-sm text-gray-500">{label}</div>
-            <div className="text-2xl font-bold">{value}</div>
-          </div>
-        ))}
-      </div>
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+      {stats.map(([label, value]) => (
+        <Stat key={label} label={label} value={value} />
+      ))}
     </div>
   );
 }

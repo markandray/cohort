@@ -1,9 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 import { useRequireAuth } from '@/lib/use-require-auth';
+import { Button, buttonStyles } from '@/components/ui/button';
+import { Card, ListCard, ListRow } from '@/components/ui/card';
+import { Field, Input } from '@/components/ui/form';
+import { Empty, PageContainer, PageHeader, Section } from '@/components/ui/page';
 
 interface StudyGroupDetail {
   id: string;
@@ -39,6 +44,8 @@ export default function StudyGroupDetailPage() {
   const [members, setMembers] = useState<MemberEntry[] | null>(null);
   const [membersLoading, setMembersLoading] = useState(true);
   const [membersError, setMembersError] = useState<string | null>(null);
+  // Bumping this re-runs the members effect (used after a successful join).
+  const [membersReloadKey, setMembersReloadKey] = useState(0);
 
   const [joinStatus, setJoinStatus] = useState<JoinStatus>('idle');
   const [joinError, setJoinError] = useState<string | null>(null);
@@ -84,26 +91,27 @@ export default function StudyGroupDetailPage() {
 
   useEffect(() => {
     if (!user) return;
-    loadMembers();
-  }, [id, user]);
 
-  async function loadMembers() {
-    setMembersLoading(true);
-    setMembersError(null);
-    try {
-      const res = await apiFetch(`/api/study-groups/${id}/members`);
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to load members');
+    // Reloads after the first load happen silently (no loading flicker):
+    // membersLoading starts true and is only ever set to false.
+    async function loadMembers() {
+      try {
+        const res = await apiFetch(`/api/study-groups/${id}/members`);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to load members');
+        }
+        const data = await res.json();
+        setMembers(data.members);
+        setMembersError(null);
+      } catch (err) {
+        setMembersError(err instanceof Error ? err.message : 'Something went wrong');
+      } finally {
+        setMembersLoading(false);
       }
-      const data = await res.json();
-      setMembers(data.members);
-    } catch (err) {
-      setMembersError(err instanceof Error ? err.message : 'Something went wrong');
-    } finally {
-      setMembersLoading(false);
     }
-  }
+    loadMembers();
+  }, [id, user, membersReloadKey]);
 
   async function handleJoin() {
     setJoinStatus('submitting');
@@ -112,7 +120,7 @@ export default function StudyGroupDetailPage() {
       const res = await apiFetch(`/api/study-groups/${id}/join`, { method: 'POST' });
       if (res.status === 201) {
         setJoinStatus('success');
-        await loadMembers();
+        setMembersReloadKey((k) => k + 1);
       } else if (res.status === 409) {
         setJoinStatus('already-member');
       } else {
@@ -194,16 +202,22 @@ export default function StudyGroupDetailPage() {
     }
   }
 
-  if (authLoading || !user) {
-    return <p className="text-center mt-16">Loading...</p>;
-  }
-
-  if (isLoading) {
-    return <p className="text-center mt-16">Loading study group...</p>;
+  if (authLoading || !user || isLoading) {
+    return (
+      <PageContainer width="md">
+        <p className="text-muted">Loading...</p>
+      </PageContainer>
+    );
   }
 
   if (error) {
-    return <p className="text-center mt-16 text-red-600">{error}</p>;
+    return (
+      <PageContainer width="md">
+        <p role="alert" className="text-danger">
+          {error}
+        </p>
+      </PageContainer>
+    );
   }
 
   if (!group) {
@@ -211,29 +225,34 @@ export default function StudyGroupDetailPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto mt-16 px-4">
-      <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-semibold">{group.name}</h1>
-      </div>
-      {isCreator && <p className="text-sm text-gray-500 mb-6">You created this group.</p>}
-      {!isCreator && <div className="mb-6" />}
+    <PageContainer width="md">
+      <PageHeader
+        title={group.name}
+        description={isCreator ? 'You created this group.' : undefined}
+        actions={
+          <Link
+            href={`/classes/${group.class_id}`}
+            className={buttonStyles({ variant: 'ghost', size: 'sm' })}
+          >
+            ← Class
+          </Link>
+        }
+      />
 
       {canJoin && (
         <div className="mb-8">
           {joinStatus === 'already-member' && (
-            <p className="text-sm mb-2 text-gray-600">You are already a member of this group.</p>
+            <p className="mb-2 text-sm text-muted">You are already a member of this group.</p>
           )}
           {joinStatus === 'error' && joinError && (
-            <p className="text-red-600 text-sm mb-2">{joinError}</p>
+            <p role="alert" className="mb-2 text-sm text-danger">
+              {joinError}
+            </p>
           )}
           {joinStatus !== 'success' && joinStatus !== 'already-member' && (
-            <button
-              onClick={handleJoin}
-              disabled={joinStatus === 'submitting'}
-              className="bg-black text-white rounded px-3 py-2 disabled:opacity-50"
-            >
-              {joinStatus === 'submitting' ? 'Joining...' : 'Join'}
-            </button>
+            <Button onClick={handleJoin} disabled={joinStatus === 'submitting'}>
+              {joinStatus === 'submitting' ? 'Joining...' : 'Join group'}
+            </Button>
           )}
         </div>
       )}
@@ -241,15 +260,13 @@ export default function StudyGroupDetailPage() {
       {canLeave && (
         <div className="mb-8">
           {leaveStatus === 'error' && leaveError && (
-            <p className="text-red-600 text-sm mb-2">{leaveError}</p>
+            <p role="alert" className="mb-2 text-sm text-danger">
+              {leaveError}
+            </p>
           )}
-          <button
-            onClick={handleLeave}
-            disabled={leaveStatus === 'submitting'}
-            className="border rounded px-3 py-2 disabled:opacity-50"
-          >
-            {leaveStatus === 'submitting' ? 'Leaving...' : 'Leave'}
-          </button>
+          <Button variant="secondary" onClick={handleLeave} disabled={leaveStatus === 'submitting'}>
+            {leaveStatus === 'submitting' ? 'Leaving...' : 'Leave group'}
+          </Button>
         </div>
       )}
 
@@ -257,88 +274,92 @@ export default function StudyGroupDetailPage() {
         <div className="mb-8 flex flex-col gap-3">
           {!showRenameForm && (
             <div className="flex gap-2">
-              <button
-                onClick={() => setShowRenameForm(true)}
-                className="border rounded px-3 py-2"
-              >
+              <Button variant="secondary" onClick={() => setShowRenameForm(true)}>
                 Rename
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="danger"
                 onClick={handleDelete}
                 disabled={deleteStatus === 'submitting'}
-                className="border border-red-600 text-red-600 rounded px-3 py-2 disabled:opacity-50"
               >
                 {deleteStatus === 'submitting' ? 'Deleting...' : 'Delete'}
-              </button>
+              </Button>
             </div>
           )}
 
           {showRenameForm && (
-            <div className="border rounded px-4 py-3 flex flex-col gap-3">
-              <div>
-                <label className="block text-sm font-medium mb-1">Name</label>
-                <input
-                  type="text"
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  className="border rounded px-3 py-2 w-full"
-                />
-                {renameFieldError && (
-                  <p className="text-red-600 text-sm mt-1">{renameFieldError}</p>
+            <Card className="p-4">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleRename();
+                }}
+                className="flex flex-col gap-4"
+              >
+                <Field label="Name" error={renameFieldError}>
+                  <Input
+                    type="text"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                  />
+                </Field>
+
+                {renameStatus === 'error' && renameError && (
+                  <p
+                    role="alert"
+                    className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger"
+                  >
+                    {renameError}
+                  </p>
                 )}
-              </div>
 
-              {renameStatus === 'error' && renameError && (
-                <p className="text-red-600 text-sm">{renameError}</p>
-              )}
-
-              <div className="flex gap-2">
-                <button
-                  onClick={handleRename}
-                  disabled={renameStatus === 'submitting'}
-                  className="bg-black text-white rounded px-3 py-2 disabled:opacity-50"
-                >
-                  {renameStatus === 'submitting' ? 'Saving...' : 'Save'}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowRenameForm(false);
-                    setRenameValue(group.name);
-                    setRenameFieldError(null);
-                    setRenameError(null);
-                  }}
-                  className="border rounded px-3 py-2"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={renameStatus === 'submitting'}>
+                    {renameStatus === 'submitting' ? 'Saving...' : 'Save'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setShowRenameForm(false);
+                      setRenameValue(group.name);
+                      setRenameFieldError(null);
+                      setRenameError(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </Card>
           )}
 
           {deleteStatus === 'error' && deleteError && (
-            <p className="text-red-600 text-sm">{deleteError}</p>
+            <p role="alert" className="text-sm text-danger">
+              {deleteError}
+            </p>
           )}
         </div>
       )}
 
-      <div>
-        <h2 className="text-lg font-medium mb-3">Members</h2>
-        {membersLoading && <p className="text-gray-500">Loading members...</p>}
-        {membersError && <p className="text-red-600 text-sm">{membersError}</p>}
+      <Section title="Members" count={members?.length}>
+        {membersLoading && <p className="text-sm text-muted">Loading members...</p>}
+        {membersError && (
+          <p role="alert" className="text-sm text-danger">
+            {membersError}
+          </p>
+        )}
         {!membersLoading && !membersError && members && members.length === 0 && (
-          <p className="text-gray-500">No members yet.</p>
+          <Empty>No members yet.</Empty>
         )}
         {!membersLoading && !membersError && members && members.length > 0 && (
-          <div className="flex flex-col gap-2">
+          <ListCard>
             {members.map((m) => (
-              <div key={m.id} className="border rounded px-4 py-2">
-                <p className="font-medium">{m.student.name}</p>
-                <p className="text-sm text-gray-500">{m.student.email}</p>
-              </div>
+              <ListRow key={m.id} primary={m.student.name} secondary={m.student.email} />
             ))}
-          </div>
+          </ListCard>
         )}
-      </div>
-    </div>
+      </Section>
+    </PageContainer>
   );
 }

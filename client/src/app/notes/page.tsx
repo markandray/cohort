@@ -1,9 +1,12 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { useRequireAuth } from '@/lib/use-require-auth';
+import { Button } from '@/components/ui/button';
+import { Badge, Card, ListCard, ListRow } from '@/components/ui/card';
+import { Field, Input, Select, Textarea } from '@/components/ui/form';
+import { Empty, PageContainer, PageHeader } from '@/components/ui/page';
 
 interface NoteListItem {
   id: string;
@@ -67,9 +70,11 @@ export default function NotesPage() {
         const res = await apiFetch('/api/classes');
         if (!res.ok) return;
         const data = await res.json();
-        setClassOptions(data.classes.map((c: any) => ({ id: c.id, name: c.name })));
+        setClassOptions(
+          (data.classes as ClassOption[]).map((c) => ({ id: c.id, name: c.name }))
+        );
       } catch {
-        // Non-fatal — the create form still works without a class selector populated.
+        // Non-fatal: the create form still works without a class selector populated.
       }
     }
     loadClasses();
@@ -128,116 +133,107 @@ export default function NotesPage() {
     }
   }
 
-  if (authLoading || !user) {
-    return <p className="text-center mt-16">Loading...</p>;
-  }
-
-  if (isLoading) {
-    return <p className="text-center mt-16">Loading notes...</p>;
+  if (authLoading || !user || isLoading) {
+    return (
+      <PageContainer width="md">
+        <p className="text-muted">Loading...</p>
+      </PageContainer>
+    );
   }
 
   if (error) {
-    return <p className="text-center mt-16 text-red-600">{error}</p>;
+    return (
+      <PageContainer width="md">
+        <p role="alert" className="text-danger">
+          {error}
+        </p>
+      </PageContainer>
+    );
   }
 
   return (
-    <div className="max-w-2xl mx-auto mt-16 px-4">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold">Notes</h1>
-        {!showCreateForm && (
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="bg-black text-white rounded px-3 py-2 text-sm"
-          >
-            New Note
-          </button>
-        )}
-      </div>
+    <PageContainer width="md">
+      <PageHeader
+        title="Notes"
+        description="Your personal notes, optionally tied to a class."
+        actions={
+          !showCreateForm ? (
+            <Button size="sm" onClick={() => setShowCreateForm(true)}>
+              New note
+            </Button>
+          ) : undefined
+        }
+      />
 
       {showCreateForm && (
-        <div className="border rounded px-4 py-3 mb-6 flex flex-col gap-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">Title</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="border rounded px-3 py-2 w-full"
-            />
-            {titleFieldError && <p className="text-red-600 text-sm mt-1">{titleFieldError}</p>}
-          </div>
+        <Card className="mb-8 p-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleCreate();
+            }}
+            className="flex flex-col gap-4"
+          >
+            <Field label="Title" error={titleFieldError}>
+              <Input type="text" value={title} onChange={(e) => setTitle(e.target.value)} />
+            </Field>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Content</label>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className="border rounded px-3 py-2 w-full"
-            />
-            {contentFieldError && <p className="text-red-600 text-sm mt-1">{contentFieldError}</p>}
-          </div>
+            <Field label="Content" error={contentFieldError}>
+              <Textarea value={content} onChange={(e) => setContent(e.target.value)} />
+            </Field>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Class (optional)</label>
-            <select
-              value={selectedClassId}
-              onChange={(e) => setSelectedClassId(e.target.value)}
-              className="border rounded px-3 py-2 w-full"
-            >
-              <option value="">No class</option>
-              {classOptions.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
+            <Field label="Class (optional)">
+              <Select value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)}>
+                <option value="">No class</option>
+                {classOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
 
-          {createStatus === 'error' && createError && (
-            <p className="text-red-600 text-sm">{createError}</p>
-          )}
+            {createStatus === 'error' && createError && (
+              <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+                {createError}
+              </p>
+            )}
 
-          <div className="flex gap-2">
-            <button
-              onClick={handleCreate}
-              disabled={createStatus === 'submitting'}
-              className="bg-black text-white rounded px-3 py-2 disabled:opacity-50"
-            >
-              {createStatus === 'submitting' ? 'Creating...' : 'Create'}
-            </button>
-            <button
-              onClick={() => {
-                setShowCreateForm(false);
-                setTitleFieldError(null);
-                setContentFieldError(null);
-                setCreateError(null);
-              }}
-              className="border rounded px-3 py-2"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={createStatus === 'submitting'}>
+                {createStatus === 'submitting' ? 'Creating...' : 'Create'}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setTitleFieldError(null);
+                  setContentFieldError(null);
+                  setCreateError(null);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </Card>
       )}
 
-      {notes && notes.length === 0 && <p className="text-gray-500">No notes yet.</p>}
+      {notes && notes.length === 0 && <Empty>No notes yet. Create your first one above.</Empty>}
       {notes && notes.length > 0 && (
-        <div className="flex flex-col gap-2">
+        <ListCard>
           {notes.map((n) => (
-            <Link
+            <ListRow
               key={n.id}
               href={`/notes/${n.id}`}
-              className="border rounded px-4 py-3 hover:bg-gray-50 transition-colors"
-            >
-              <p className="font-medium">{n.title}</p>
-              <p className="text-sm text-gray-500 line-clamp-2">{n.content}</p>
-              {n.class && (
-                <p className="text-xs text-gray-400 mt-1">{n.class.name}</p>
-              )}
-            </Link>
+              primary={n.title}
+              secondary={n.content}
+              trailing={n.class ? <Badge>{n.class.name}</Badge> : undefined}
+            />
           ))}
-        </div>
+        </ListCard>
       )}
-    </div>
+    </PageContainer>
   );
 }

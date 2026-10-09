@@ -5,9 +5,12 @@ interface GraphQLResponse<T> {
   errors?: Array<{ message: string }>;
 }
 
-export async function gqlFetch<T = any>(
+// Callers should pass the response shape explicitly, e.g.
+// gqlFetch<{ dashboard: Dashboard }>(QUERY). The default is `unknown`
+// so an unspecified call site can't silently treat the result as `any`.
+export async function gqlFetch<T = unknown>(
   query: string,
-  variables?: Record<string, any>
+  variables?: Record<string, unknown>
 ): Promise<T> {
   const res = await apiFetch('/api/graphql', {
     method: 'POST',

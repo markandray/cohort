@@ -3,11 +3,14 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { Badge } from '@/components/ui/card';
+import { Button, buttonStyles } from '@/components/ui/button';
+import { cn } from '@/lib/cn';
 
 interface NavItem {
   href: string;
   label: string;
-  roles?: string[]; // omit = visible to every logged-in user
+  roles?: string[];
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -32,44 +35,50 @@ export default function Nav() {
     : [];
 
   return (
-    <nav className="border-b px-8 py-3 flex items-center justify-between">
-      <div className="flex items-center gap-6">
-        <Link href="/" className="font-bold">
-          Cohort
-        </Link>
-        {visibleItems.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={active ? 'font-semibold underline' : 'text-gray-600 hover:text-black'}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
-      </div>
+    <header className="sticky top-0 z-10 border-b border-line bg-surface/90 backdrop-blur">
+      <nav className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
+        <div className="flex items-center gap-1">
+          <Link href="/" className="mr-4 font-semibold tracking-tight">
+            Cohort
+          </Link>
+          {visibleItems.map((item) => {
+            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-sm transition-colors',
+                  active ? 'bg-line/60 font-medium text-ink' : 'text-muted hover:text-ink'
+                )}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
 
-      <div className="flex items-center gap-4 text-sm">
-        {isLoading ? null : user ? (
-          <>
-            <span className="text-gray-500">{user.role}</span>
-            <button onClick={handleLogout} className="border rounded px-3 py-1">
-              Log out
-            </button>
-          </>
-        ) : (
-          <>
-            <Link href="/login" className="underline">
-              Log in
-            </Link>
-            <Link href="/signup" className="underline">
-              Sign up
-            </Link>
-          </>
-        )}
-      </div>
-    </nav>
+        <div className="flex items-center gap-3">
+          {isLoading ? null : user ? (
+            <>
+              <Badge>{user.role}</Badge>
+              <Button variant="ghost" size="sm" onClick={handleLogout}>
+                Log out
+              </Button>
+            </>
+          ) : (
+            <>
+              <Link href="/login" className={buttonStyles({ variant: 'secondary', size: 'sm' })}>
+                Log in
+              </Link>
+              <Link href="/signup" className={buttonStyles({ size: 'sm' })}>
+                Sign up
+              </Link>
+            </>
+          )}
+        </div>
+      </nav>
+    </header>
   );
 }

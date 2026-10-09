@@ -1,8 +1,13 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Field, Input } from '@/components/ui/form';
+import { PageContainer } from '@/components/ui/page';
 
 export default function SignupPage() {
   const { signup } = useAuth();
@@ -19,6 +24,7 @@ export default function SignupPage() {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
+
     try {
       await signup(email, password, name, inviteCode);
       router.push('/');
@@ -30,50 +36,75 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="max-w-sm mx-auto mt-16">
-      <h1 className="text-xl font-semibold mb-4">Sign up</h1>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <input
-          type="text"
-          placeholder="Invite code (teachers and admins only)"
-          value={inviteCode}
-          onChange={(e) => setInviteCode(e.target.value)}
-          className="border rounded px-3 py-2"
-          autoComplete="off"
-        />
-        <input
-        type="text"
-        placeholder="Name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        className="border rounded px-3 py-2"
-         required
-        />
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="border rounded px-3 py-2"
-          required
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="border rounded px-3 py-2"
-          required
-        />
-        {error && <p className="text-red-600 text-sm">{error}</p>}
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="bg-black text-white rounded px-3 py-2 disabled:opacity-50"
-        >
-          {isSubmitting ? 'Signing up...' : 'Sign up'}
-        </button>
-      </form>
-    </div>
+    <PageContainer width="narrow" className="pt-16">
+      <Card className="p-6">
+        <h1 className="text-xl font-semibold tracking-tight">Sign up</h1>
+        <p className="mt-1 text-sm text-muted">Create your Cohort account.</p>
+
+        <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+          <Field label="Name">
+            <Input
+              type="text"
+              autoComplete="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+          </Field>
+
+          <Field label="Email">
+            <Input
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </Field>
+
+          <Field label="Password">
+            <Input
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </Field>
+
+          <Field
+            label="Invite code"
+            hint="Only needed for teacher and admin accounts."
+          >
+            <Input
+              type="text"
+              autoComplete="off"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
+            />
+          </Field>
+
+          {error && (
+            <p
+              role="alert"
+              className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger"
+            >
+              {error}
+            </p>
+          )}
+
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Signing up...' : 'Sign up'}
+          </Button>
+        </form>
+
+        <p className="mt-6 text-sm text-muted">
+          Already have an account?{' '}
+          <Link href="/login" className="text-accent hover:underline">
+            Log in
+          </Link>
+        </p>
+      </Card>
+    </PageContainer>
   );
 }

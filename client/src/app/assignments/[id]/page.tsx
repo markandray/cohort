@@ -1,9 +1,14 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 import { useRequireAuth } from '@/lib/use-require-auth';
+import { Button, buttonStyles } from '@/components/ui/button';
+import { Badge, Card } from '@/components/ui/card';
+import { Field, Input, Textarea } from '@/components/ui/form';
+import { Empty, PageContainer, PageHeader, Section } from '@/components/ui/page';
 
 interface AssignmentDetail {
   id: string;
@@ -46,6 +51,8 @@ type SubmitStatus = 'idle' | 'submitting' | 'success' | 'already-submitted' | 'e
 type ResubmitStatus = 'idle' | 'submitting' | 'success' | 'error';
 type GradeStatus = 'idle' | 'submitting' | 'success' | 'error';
 
+const linkStyles = 'break-all text-sm text-accent hover:underline';
+
 export default function AssignmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user, isLoading: authLoading } = useRequireAuth();
@@ -54,19 +61,22 @@ export default function AssignmentDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Existing submission (pre-check) — null means "checked, none exists yet".
+  // These two loaders start in the loading state and only ever flip to "done", so
+  // their effects never call setState synchronously. Each is only rendered for
+  // the role that triggers it.
+  // Existing submission (pre-check): null means "checked, none exists yet".
   const [mySubmission, setMySubmission] = useState<MySubmissionEntry | null>(null);
-  const [mySubmissionLoading, setMySubmissionLoading] = useState(false);
+  const [mySubmissionLoading, setMySubmissionLoading] = useState(true);
   const [mySubmissionError, setMySubmissionError] = useState<string | null>(null);
 
-  // First-time submit (no existing submission) — unchanged from before.
+  // First-time submit (no existing submission).
   const [content, setContent] = useState('');
   const [fileUrl, setFileUrl] = useState('');
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('idle');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitFieldError, setSubmitFieldError] = useState<string | null>(null);
 
-  // Resubmit form — separate state, pre-filled from mySubmission when opened.
+  // Resubmit form: separate state, pre-filled from mySubmission when loaded.
   const [showResubmitForm, setShowResubmitForm] = useState(false);
   const [resubmitContent, setResubmitContent] = useState('');
   const [resubmitFileUrl, setResubmitFileUrl] = useState('');
@@ -75,10 +85,10 @@ export default function AssignmentDetailPage() {
   const [resubmitFieldError, setResubmitFieldError] = useState<string | null>(null);
 
   const [submissions, setSubmissions] = useState<SubmissionEntry[] | null>(null);
-  const [submissionsLoading, setSubmissionsLoading] = useState(false);
+  const [submissionsLoading, setSubmissionsLoading] = useState(true);
   const [submissionsError, setSubmissionsError] = useState<string | null>(null);
 
-  // Grading form — one row open at a time, same convention as resubmit.
+  // Grading form: one row open at a time, same convention as resubmit.
   const [gradingSubmissionId, setGradingSubmissionId] = useState<string | null>(null);
   const [gradeInput, setGradeInput] = useState('');
   const [feedbackInput, setFeedbackInput] = useState('');
@@ -114,8 +124,6 @@ export default function AssignmentDetailPage() {
     if (!isStudent) return;
 
     async function loadMySubmission() {
-      setMySubmissionLoading(true);
-      setMySubmissionError(null);
       try {
         const res = await apiFetch('/api/submissions/me');
         if (!res.ok) {
@@ -131,6 +139,7 @@ export default function AssignmentDetailPage() {
           setResubmitContent(existing.content ?? '');
           setResubmitFileUrl(existing.file_url ?? '');
         }
+        setMySubmissionError(null);
       } catch (err) {
         setMySubmissionError(err instanceof Error ? err.message : 'Something went wrong');
       } finally {
@@ -144,8 +153,6 @@ export default function AssignmentDetailPage() {
     if (!canViewSubmissions) return;
 
     async function loadSubmissions() {
-      setSubmissionsLoading(true);
-      setSubmissionsError(null);
       try {
         const res = await apiFetch(`/api/assignments/${id}/submissions`);
         if (!res.ok) {
@@ -154,6 +161,7 @@ export default function AssignmentDetailPage() {
         }
         const data = await res.json();
         setSubmissions(data.submissions);
+        setSubmissionsError(null);
       } catch (err) {
         setSubmissionsError(err instanceof Error ? err.message : 'Something went wrong');
       } finally {
@@ -291,16 +299,22 @@ export default function AssignmentDetailPage() {
     }
   }
 
-  if (authLoading || !user) {
-    return <p className="text-center mt-16">Loading...</p>;
-  }
-
-  if (isLoading) {
-    return <p className="text-center mt-16">Loading assignment...</p>;
+  if (authLoading || !user || isLoading) {
+    return (
+      <PageContainer width="md">
+        <p className="text-muted">Loading...</p>
+      </PageContainer>
+    );
   }
 
   if (error) {
-    return <p className="text-center mt-16 text-red-600">{error}</p>;
+    return (
+      <PageContainer width="md">
+        <p role="alert" className="text-danger">
+          {error}
+        </p>
+      </PageContainer>
+    );
   }
 
   if (!assignment) {
@@ -308,283 +322,305 @@ export default function AssignmentDetailPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto mt-16 px-4">
-      <h1 className="text-xl font-semibold mb-1">{assignment.title}</h1>
-      <p className="text-sm text-gray-500 mb-1">
-        Due {new Date(assignment.due_date).toLocaleDateString()}
-      </p>
+    <PageContainer width="md">
+      <PageHeader
+        title={assignment.title}
+        description={`Due ${new Date(assignment.due_date).toLocaleDateString()}`}
+        actions={
+          <Link
+            href={`/classes/${assignment.class_id}`}
+            className={buttonStyles({ variant: 'ghost', size: 'sm' })}
+          >
+            ← Class
+          </Link>
+        }
+      />
+
       {assignment.description && (
-        <p className="text-sm text-gray-700 mb-6">{assignment.description}</p>
+        <p className="-mt-4 mb-8 whitespace-pre-line text-sm">{assignment.description}</p>
       )}
 
-      {isStudent && (
-        <div className="mb-8">
-          <h2 className="text-lg font-medium mb-3">Your Submission</h2>
+      <div className="space-y-8">
+        {isStudent && (
+          <Section title="Your submission">
+            {mySubmissionLoading && (
+              <p className="text-sm text-muted">Checking your submission...</p>
+            )}
+            {mySubmissionError && (
+              <p role="alert" className="text-sm text-danger">
+                {mySubmissionError}
+              </p>
+            )}
 
-          {mySubmissionLoading && <p className="text-gray-500">Checking your submission...</p>}
-          {mySubmissionError && <p className="text-red-600 text-sm">{mySubmissionError}</p>}
-
-          {!mySubmissionLoading && !mySubmissionError && mySubmission && (
-            <div className="border rounded px-4 py-3 flex flex-col gap-3">
-              {!showResubmitForm && (
-                <>
-                  {mySubmission.content && (
-                    <p className="text-sm text-gray-700">{mySubmission.content}</p>
-                  )}
-                  {mySubmission.file_url && (
-                    <a
-                      href={mySubmission.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-600 underline"
-                    >
-                      {mySubmission.file_url}
-                    </a>
-                  )}
-                  <p className="text-xs text-gray-400">
-                    Submitted {new Date(mySubmission.submitted_at).toLocaleString()}
-                  </p>
-
-                  {mySubmission.grade !== null ? (
-                    <p className="text-sm">
-                      <span className="font-medium">Grade:</span> {mySubmission.grade}/100
+            {!mySubmissionLoading && !mySubmissionError && mySubmission && (
+              <Card className="flex flex-col gap-3 p-4">
+                {!showResubmitForm && (
+                  <>
+                    {mySubmission.content && (
+                      <p className="whitespace-pre-line text-sm">{mySubmission.content}</p>
+                    )}
+                    {mySubmission.file_url && (
+                      <a
+                        href={mySubmission.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={linkStyles}
+                      >
+                        {mySubmission.file_url}
+                      </a>
+                    )}
+                    <p className="text-xs text-muted">
+                      Submitted {new Date(mySubmission.submitted_at).toLocaleString()}
                     </p>
-                  ) : (
-                    <p className="text-sm text-gray-500">Not graded yet.</p>
-                  )}
-                  {mySubmission.feedback && (
-                    <p className="text-sm text-gray-700">
-                      <span className="font-medium">Feedback:</span> {mySubmission.feedback}
-                    </p>
-                  )}
 
-                  {resubmitStatus === 'success' && (
-                    <p className="text-green-600 text-sm">Resubmitted successfully.</p>
-                  )}
-
-                  <div>
-                    <button
-                      onClick={() => {
-                        setShowResubmitForm(true);
-                        setResubmitStatus('idle');
-                        setResubmitError(null);
-                      }}
-                      className="border rounded px-3 py-2 text-sm"
-                    >
-                      Resubmit
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {showResubmitForm && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Content</label>
-                    <textarea
-                      value={resubmitContent}
-                      onChange={(e) => setResubmitContent(e.target.value)}
-                      className="border rounded px-3 py-2 w-full"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Link (optional)</label>
-                    <input
-                      type="text"
-                      value={resubmitFileUrl}
-                      onChange={(e) => setResubmitFileUrl(e.target.value)}
-                      className="border rounded px-3 py-2 w-full"
-                    />
-                  </div>
-
-                  {resubmitFieldError && (
-                    <p className="text-red-600 text-sm">{resubmitFieldError}</p>
-                  )}
-                  {resubmitStatus === 'error' && resubmitError && (
-                    <p className="text-red-600 text-sm">{resubmitError}</p>
-                  )}
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleResubmit}
-                      disabled={resubmitStatus === 'submitting'}
-                      className="bg-black text-white rounded px-3 py-2 disabled:opacity-50"
-                    >
-                      {resubmitStatus === 'submitting' ? 'Resubmitting...' : 'Resubmit'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowResubmitForm(false);
-                        setResubmitContent(mySubmission.content ?? '');
-                        setResubmitFileUrl(mySubmission.file_url ?? '');
-                        setResubmitFieldError(null);
-                        setResubmitError(null);
-                      }}
-                      className="border rounded px-3 py-2"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {!mySubmissionLoading && !mySubmissionError && !mySubmission && (
-            <>
-              {submitStatus === 'success' && (
-                <p className="text-green-600 text-sm mb-2">Submitted successfully.</p>
-              )}
-              {submitStatus === 'already-submitted' && (
-                <p className="text-sm mb-2 text-gray-600">
-                  You have already submitted this assignment.
-                </p>
-              )}
-              {submitStatus === 'error' && submitError && (
-                <p className="text-red-600 text-sm mb-2">{submitError}</p>
-              )}
-
-              {submitStatus !== 'success' && submitStatus !== 'already-submitted' && (
-                <div className="border rounded px-4 py-3 flex flex-col gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Content</label>
-                    <textarea
-                      value={content}
-                      onChange={(e) => setContent(e.target.value)}
-                      className="border rounded px-3 py-2 w-full"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Link (optional)</label>
-                    <input
-                      type="text"
-                      value={fileUrl}
-                      onChange={(e) => setFileUrl(e.target.value)}
-                      className="border rounded px-3 py-2 w-full"
-                    />
-                  </div>
-
-                  {submitFieldError && <p className="text-red-600 text-sm">{submitFieldError}</p>}
-
-                  <button
-                    onClick={handleSubmit}
-                    disabled={submitStatus === 'submitting'}
-                    className="bg-black text-white rounded px-3 py-2 disabled:opacity-50"
-                  >
-                    {submitStatus === 'submitting' ? 'Submitting...' : 'Submit'}
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {canViewSubmissions && (
-        <div>
-          <h2 className="text-lg font-medium mb-3">Submissions</h2>
-          {submissionsLoading && <p className="text-gray-500">Loading submissions...</p>}
-          {submissionsError && <p className="text-red-600 text-sm">{submissionsError}</p>}
-          {!submissionsLoading && !submissionsError && submissions && submissions.length === 0 && (
-            <p className="text-gray-500">No submissions yet.</p>
-          )}
-          {!submissionsLoading && !submissionsError && submissions && submissions.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {submissions.map((s) => (
-                <div key={s.id} className="border rounded px-4 py-3">
-                  <p className="font-medium">{s.student.name}</p>
-                  <p className="text-sm text-gray-500 mb-2">{s.student.email}</p>
-                  {s.content && <p className="text-sm text-gray-700 mb-1">{s.content}</p>}
-                  {s.file_url && (
-                    <a
-                      href={s.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-600 underline"
-                    >
-                      {s.file_url}
-                    </a>
-                  )}
-                  <p className="text-xs text-gray-400 mt-2">
-                    Submitted {new Date(s.submitted_at).toLocaleString()}
-                  </p>
-
-                  {gradingSubmissionId !== s.id && (
-                    <>
-                      {s.grade !== null ? (
-                        <p className="text-sm mt-2">
-                          <span className="font-medium">Grade:</span> {s.grade}/100
-                        </p>
+                    <div className="flex items-center gap-2">
+                      {mySubmission.grade !== null ? (
+                        <Badge tone="success">Grade {mySubmission.grade}/100</Badge>
                       ) : (
-                        <p className="text-sm text-gray-500 mt-2">Not graded yet.</p>
+                        <Badge tone="warning">Not graded yet</Badge>
                       )}
-                      {s.feedback && (
-                        <p className="text-sm text-gray-700 mt-1">
-                          <span className="font-medium">Feedback:</span> {s.feedback}
-                        </p>
-                      )}
-
-                      <div className="mt-2">
-                        <button
-                          onClick={() => openGradeForm(s)}
-                          className="border rounded px-3 py-2 text-sm"
-                        >
-                          {s.grade !== null ? 'Update Grade' : 'Grade'}
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  {gradingSubmissionId === s.id && (
-                    <div className="mt-3 flex flex-col gap-3">
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Grade (0-100)</label>
-                        <input
-                          type="text"
-                          value={gradeInput}
-                          onChange={(e) => setGradeInput(e.target.value)}
-                          className="border rounded px-3 py-2 w-full"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Feedback (optional)</label>
-                        <textarea
-                          value={feedbackInput}
-                          onChange={(e) => setFeedbackInput(e.target.value)}
-                          className="border rounded px-3 py-2 w-full"
-                        />
-                      </div>
-
-                      {gradeFieldError && (
-                        <p className="text-red-600 text-sm">{gradeFieldError}</p>
-                      )}
-                      {gradeStatus === 'error' && gradeError && (
-                        <p className="text-red-600 text-sm">{gradeError}</p>
-                      )}
-
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleGradeSubmit(s.id)}
-                          disabled={gradeStatus === 'submitting'}
-                          className="bg-black text-white rounded px-3 py-2 disabled:opacity-50"
-                        >
-                          {gradeStatus === 'submitting' ? 'Saving...' : 'Save Grade'}
-                        </button>
-                        <button onClick={closeGradeForm} className="border rounded px-3 py-2">
-                          Cancel
-                        </button>
-                      </div>
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+                    {mySubmission.feedback && (
+                      <p className="text-sm">
+                        <span className="font-medium">Feedback:</span> {mySubmission.feedback}
+                      </p>
+                    )}
+
+                    {resubmitStatus === 'success' && (
+                      <p className="text-sm text-success">Resubmitted successfully.</p>
+                    )}
+
+                    <div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setShowResubmitForm(true);
+                          setResubmitStatus('idle');
+                          setResubmitError(null);
+                        }}
+                      >
+                        Resubmit
+                      </Button>
+                    </div>
+                  </>
+                )}
+
+                {showResubmitForm && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleResubmit();
+                    }}
+                    className="flex flex-col gap-4"
+                  >
+                    <Field label="Content">
+                      <Textarea
+                        value={resubmitContent}
+                        onChange={(e) => setResubmitContent(e.target.value)}
+                      />
+                    </Field>
+
+                    <Field label="Link (optional)" error={resubmitFieldError}>
+                      <Input
+                        type="text"
+                        value={resubmitFileUrl}
+                        onChange={(e) => setResubmitFileUrl(e.target.value)}
+                      />
+                    </Field>
+
+                    {resubmitStatus === 'error' && resubmitError && (
+                      <p
+                        role="alert"
+                        className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger"
+                      >
+                        {resubmitError}
+                      </p>
+                    )}
+
+                    <div className="flex gap-2">
+                      <Button type="submit" disabled={resubmitStatus === 'submitting'}>
+                        {resubmitStatus === 'submitting' ? 'Resubmitting...' : 'Resubmit'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => {
+                          setShowResubmitForm(false);
+                          setResubmitContent(mySubmission.content ?? '');
+                          setResubmitFileUrl(mySubmission.file_url ?? '');
+                          setResubmitFieldError(null);
+                          setResubmitError(null);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </Card>
+            )}
+
+            {!mySubmissionLoading && !mySubmissionError && !mySubmission && (
+              <>
+                {submitStatus === 'success' && (
+                  <p className="mb-2 text-sm text-success">Submitted successfully.</p>
+                )}
+                {submitStatus === 'already-submitted' && (
+                  <p className="mb-2 text-sm text-muted">
+                    You have already submitted this assignment.
+                  </p>
+                )}
+                {submitStatus === 'error' && submitError && (
+                  <p role="alert" className="mb-2 text-sm text-danger">
+                    {submitError}
+                  </p>
+                )}
+
+                {submitStatus !== 'success' && submitStatus !== 'already-submitted' && (
+                  <Card className="p-4">
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handleSubmit();
+                      }}
+                      className="flex flex-col gap-4"
+                    >
+                      <Field label="Content">
+                        <Textarea value={content} onChange={(e) => setContent(e.target.value)} />
+                      </Field>
+
+                      <Field label="Link (optional)" error={submitFieldError}>
+                        <Input
+                          type="text"
+                          value={fileUrl}
+                          onChange={(e) => setFileUrl(e.target.value)}
+                        />
+                      </Field>
+
+                      <div>
+                        <Button type="submit" disabled={submitStatus === 'submitting'}>
+                          {submitStatus === 'submitting' ? 'Submitting...' : 'Submit'}
+                        </Button>
+                      </div>
+                    </form>
+                  </Card>
+                )}
+              </>
+            )}
+          </Section>
+        )}
+
+        {canViewSubmissions && (
+          <Section title="Submissions" count={submissions?.length}>
+            {submissionsLoading && <p className="text-sm text-muted">Loading submissions...</p>}
+            {submissionsError && (
+              <p role="alert" className="text-sm text-danger">
+                {submissionsError}
+              </p>
+            )}
+            {!submissionsLoading &&
+              !submissionsError &&
+              submissions &&
+              submissions.length === 0 && <Empty>No submissions yet.</Empty>}
+            {!submissionsLoading && !submissionsError && submissions && submissions.length > 0 && (
+              <div className="space-y-3">
+                {submissions.map((s) => (
+                  <Card key={s.id} className="p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{s.student.name}</p>
+                        <p className="text-sm text-muted">{s.student.email}</p>
+                      </div>
+                      {s.grade !== null ? (
+                        <Badge tone="success">{s.grade}/100</Badge>
+                      ) : (
+                        <Badge tone="warning">Needs grading</Badge>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex flex-col gap-2">
+                      {s.content && <p className="whitespace-pre-line text-sm">{s.content}</p>}
+                      {s.file_url && (
+                        <a
+                          href={s.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={linkStyles}
+                        >
+                          {s.file_url}
+                        </a>
+                      )}
+                      <p className="text-xs text-muted">
+                        Submitted {new Date(s.submitted_at).toLocaleString()}
+                      </p>
+                    </div>
+
+                    {gradingSubmissionId !== s.id && (
+                      <div className="mt-3 flex flex-col gap-2">
+                        {s.feedback && (
+                          <p className="text-sm">
+                            <span className="font-medium">Feedback:</span> {s.feedback}
+                          </p>
+                        )}
+                        <div>
+                          <Button variant="secondary" size="sm" onClick={() => openGradeForm(s)}>
+                            {s.grade !== null ? 'Update grade' : 'Grade'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {gradingSubmissionId === s.id && (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          handleGradeSubmit(s.id);
+                        }}
+                        className="mt-4 flex flex-col gap-4 border-t border-line pt-4"
+                      >
+                        <Field label="Grade (0-100)" error={gradeFieldError}>
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            value={gradeInput}
+                            onChange={(e) => setGradeInput(e.target.value)}
+                          />
+                        </Field>
+
+                        <Field label="Feedback (optional)">
+                          <Textarea
+                            value={feedbackInput}
+                            onChange={(e) => setFeedbackInput(e.target.value)}
+                          />
+                        </Field>
+
+                        {gradeStatus === 'error' && gradeError && (
+                          <p
+                            role="alert"
+                            className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger"
+                          >
+                            {gradeError}
+                          </p>
+                        )}
+
+                        <div className="flex gap-2">
+                          <Button type="submit" disabled={gradeStatus === 'submitting'}>
+                            {gradeStatus === 'submitting' ? 'Saving...' : 'Save grade'}
+                          </Button>
+                          <Button type="button" variant="secondary" onClick={closeGradeForm}>
+                            Cancel
+                          </Button>
+                        </div>
+                      </form>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            )}
+          </Section>
+        )}
+      </div>
+    </PageContainer>
   );
 }

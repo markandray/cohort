@@ -1,9 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 import { useRequireAuth } from '@/lib/use-require-auth';
+import { Button, buttonStyles } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Field, Input, Select, Textarea } from '@/components/ui/form';
+import { PageContainer, PageHeader } from '@/components/ui/page';
 
 interface NoteDetail {
   id: string;
@@ -36,10 +41,10 @@ export default function NoteDetailPage() {
   const [content, setContent] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
 
-  // Dirty flags — only send a field in the PATCH body if the user actually
+  // Dirty flags: only send a field in the PATCH body if the user actually
   // touched it. The class selector needs its own flag rather than a
   // value-diff check, since "no class" (empty string) is itself a valid,
-  // distinct target state (→ classId: null) separate from "untouched".
+  // distinct target state (classId: null) separate from "untouched".
   const [titleDirty, setTitleDirty] = useState(false);
   const [contentDirty, setContentDirty] = useState(false);
   const [classDirty, setClassDirty] = useState(false);
@@ -84,9 +89,11 @@ export default function NoteDetailPage() {
         const res = await apiFetch('/api/classes');
         if (!res.ok) return;
         const data = await res.json();
-        setClassOptions(data.classes.map((c: any) => ({ id: c.id, name: c.name })));
+        setClassOptions(
+          (data.classes as ClassOption[]).map((c) => ({ id: c.id, name: c.name }))
+        );
       } catch {
-        // Non-fatal — the class selector just stays empty of options.
+        // Non-fatal: the class selector just stays empty of options.
       }
     }
     loadClasses();
@@ -114,7 +121,7 @@ export default function NoteDetailPage() {
     if (!validateForm()) return;
 
     if (!titleDirty && !contentDirty && !classDirty) {
-      // Nothing changed — nothing to send.
+      // Nothing changed, nothing to send.
       return;
     }
 
@@ -167,16 +174,22 @@ export default function NoteDetailPage() {
     }
   }
 
-  if (authLoading || !user) {
-    return <p className="text-center mt-16">Loading...</p>;
-  }
-
-  if (isLoading) {
-    return <p className="text-center mt-16">Loading note...</p>;
+  if (authLoading || !user || isLoading) {
+    return (
+      <PageContainer width="md">
+        <p className="text-muted">Loading...</p>
+      </PageContainer>
+    );
   }
 
   if (error) {
-    return <p className="text-center mt-16 text-red-600">{error}</p>;
+    return (
+      <PageContainer width="md">
+        <p role="alert" className="text-danger">
+          {error}
+        </p>
+      </PageContainer>
+    );
   }
 
   if (!note) {
@@ -184,83 +197,89 @@ export default function NoteDetailPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto mt-16 px-4">
-      <h1 className="text-xl font-semibold mb-6">Edit Note</h1>
+    <PageContainer width="md">
+      <PageHeader
+        title="Edit note"
+        actions={
+          <Link href="/notes" className={buttonStyles({ variant: 'ghost', size: 'sm' })}>
+            ← Notes
+          </Link>
+        }
+      />
 
-      <div className="border rounded px-4 py-3 flex flex-col gap-3">
-        <div>
-          <label className="block text-sm font-medium mb-1">Title</label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              setTitleDirty(true);
-            }}
-            className="border rounded px-3 py-2 w-full"
-          />
-          {titleFieldError && <p className="text-red-600 text-sm mt-1">{titleFieldError}</p>}
-        </div>
+      <Card className="p-4">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSave();
+          }}
+          className="flex flex-col gap-4"
+        >
+          <Field label="Title" error={titleFieldError}>
+            <Input
+              type="text"
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                setTitleDirty(true);
+              }}
+            />
+          </Field>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">Content</label>
-          <textarea
-            value={content}
-            onChange={(e) => {
-              setContent(e.target.value);
-              setContentDirty(true);
-            }}
-            className="border rounded px-3 py-2 w-full"
-          />
-          {contentFieldError && <p className="text-red-600 text-sm mt-1">{contentFieldError}</p>}
-        </div>
+          <Field label="Content" error={contentFieldError}>
+            <Textarea
+              value={content}
+              onChange={(e) => {
+                setContent(e.target.value);
+                setContentDirty(true);
+              }}
+            />
+          </Field>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">Class (optional)</label>
-          <select
-            value={selectedClassId}
-            onChange={(e) => {
-              setSelectedClassId(e.target.value);
-              setClassDirty(true);
-            }}
-            className="border rounded px-3 py-2 w-full"
-          >
-            <option value="">No class</option>
-            {classOptions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
+          <Field label="Class (optional)">
+            <Select
+              value={selectedClassId}
+              onChange={(e) => {
+                setSelectedClassId(e.target.value);
+                setClassDirty(true);
+              }}
+            >
+              <option value="">No class</option>
+              {classOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
 
-        {saveStatus === 'success' && (
-          <p className="text-green-600 text-sm">Saved.</p>
-        )}
-        {saveStatus === 'error' && saveError && (
-          <p className="text-red-600 text-sm">{saveError}</p>
-        )}
+          {saveStatus === 'success' && <p className="text-sm text-success">Saved.</p>}
+          {saveStatus === 'error' && saveError && (
+            <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+              {saveError}
+            </p>
+          )}
 
-        <div className="flex gap-2">
-          <button
-            onClick={handleSave}
-            disabled={saveStatus === 'submitting'}
-            className="bg-black text-white rounded px-3 py-2 disabled:opacity-50"
-          >
-            {saveStatus === 'submitting' ? 'Saving...' : 'Save'}
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={deleteStatus === 'submitting'}
-            className="border border-red-600 text-red-600 rounded px-3 py-2 disabled:opacity-50"
-          >
-            {deleteStatus === 'submitting' ? 'Deleting...' : 'Delete'}
-          </button>
-        </div>
-        {deleteStatus === 'error' && deleteError && (
-          <p className="text-red-600 text-sm">{deleteError}</p>
-        )}
-      </div>
-    </div>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={saveStatus === 'submitting'}>
+              {saveStatus === 'submitting' ? 'Saving...' : 'Save'}
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={handleDelete}
+              disabled={deleteStatus === 'submitting'}
+            >
+              {deleteStatus === 'submitting' ? 'Deleting...' : 'Delete'}
+            </Button>
+          </div>
+          {deleteStatus === 'error' && deleteError && (
+            <p role="alert" className="text-sm text-danger">
+              {deleteError}
+            </p>
+          )}
+        </form>
+      </Card>
+    </PageContainer>
   );
 }
