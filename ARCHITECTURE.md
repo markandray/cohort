@@ -358,6 +358,46 @@ the hidden link only keep legitimate users from landing on a page that would
 fail. This is the same layering as decisions #17 and #18: the client improves
 the experience, the server holds the line.
 
+## 29. UI foundation — semantic tokens and a small in-repo component set, not a component library
+**Decision:** Colors, borders and states are defined once as semantic tokens in
+`globals.css` using Tailwind v4's `@theme` (`bg-surface`, `text-muted`,
+`border-line`, `text-danger`, `bg-accent-soft`, ...). Thirteen small components in
+`client/src/components/ui` (`Button`, `Card`, `Badge`, `Field`/`Input`/`Select`/
+`Textarea`, `ListCard`/`ListRow`, `PageContainer`/`PageHeader`/`Section`/`Empty`)
+replace the utility strings that were copy-pasted across every page. Forms use
+real `<form>` elements with labelled fields, errors carry `role="alert"`, and
+focus rings are defined globally. The app is locked to a light theme for now.
+**Why:** Before this, every page repeated `border rounded px-4 py-2`, hardcoded
+`text-red-600` and `text-gray-500`, and the dark-mode media query flipped the
+page background without any page styles following it, so dark mode was
+half-working. Tokens make a restyle a one-file change and make dark mode a
+single extra `@media` block later, which is why it was deferred and not faked.
+A component library (shadcn, MUI) was rejected because this app needs about a
+dozen simple components, not a design system, and writing them keeps the
+styling understandable end to end. The tradeoff is that complex interactive
+pieces (modals, dropdowns, focus traps) are not covered; if one is needed,
+adopt a headless library such as Radix for that piece instead of hand-rolling
+accessibility behavior. A related bug found along the way: `body` forced
+`font-family: Arial`, which silently overrode the Geist font the layout loads,
+so Geist had never actually been applied.
+
+## 30. Data loading in client pages — loader inside the effect, refetch by key
+**Decision:** Every page defines its async loader *inside* the `useEffect` that
+calls it, starts its loading flag as `true` and only ever sets it to `false`,
+and refetches after a mutation by bumping a `reloadKey` state that the effect
+depends on. Handlers never call a loader directly.
+**Why:** The React Hooks lint rule `set-state-in-effect` (part of the React
+Compiler checks) flagged the old pattern of a component-level `loadX()`
+function called from an effect, and `exhaustive-deps` flagged the same shape on
+the study-group page. Wrapping the function in `useCallback` would only
+silence the warning. The inside-the-effect version makes the dependencies
+explicit, avoids a render cascade from synchronous setState, and gives one
+pattern to follow everywhere. The cost is that a refetch is a state change
+instead of a function call, which is slightly less direct but easy to read.
+Reloads are silent by design (no loading flicker) because the flag never goes
+back to `true`. Related rule: no `any` in the client; `gqlFetch` takes an
+explicit type argument and defaults to `unknown`.
+
 ---
 
 # Tooling & CI Decisions
@@ -454,3 +494,15 @@ test DB, which failed every suite's setup. A leftover-state side effect then
 also surfaced as unrelated `class_code` collisions. CI avoids this by
 construction (decision T3: it applies real migrations to an empty database on
 every run), but local test databases drift if migrations are not applied.
+
+## T7. One type error in the app fails every test suite
+**Decision:** Controllers narrow `req.params` values with a `typeof ... ===
+'string'` check before passing them to services, because Express 5's types
+declare route params as `string | string[]`.
+**Why:** The first test run after adding the invite feature failed all seven
+suites with the same compile error, not just the new one. Every suite imports
+`app`, which imports every router and controller, and `ts-jest` type-checks
+what it loads, so a single type error in one controller fails the whole run
+before any test executes. The runtime check is not just for the compiler: it
+also rejects a malformed param with a clean 400 instead of passing an array
+into a Prisma query.
