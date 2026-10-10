@@ -506,3 +506,14 @@ what it loads, so a single type error in one controller fails the whole run
 before any test executes. The runtime check is not just for the compiler: it
 also rejects a malformed param with a clean 400 instead of passing an array
 into a Prisma query.
+
+## T8. Client lint and build run in CI
+**Decision:** A `client-checks` job runs `npm ci`, `npm run lint` and
+`npm run build` on every push and pull request, in parallel with the backend
+test job.
+**Why:** The backend suite cannot see frontend problems. Lint caught real
+issues that no server test would have: effects that set state synchronously,
+a missing hook dependency, and untyped `any` in API helpers. The production
+build also type-checks every page, so it catches a broken import or a prop
+mismatch before it ships. Without this job, those checks depended on
+remembering to run them locally.

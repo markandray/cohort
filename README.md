@@ -1,8 +1,10 @@
 # Cohort
 
+![CI](https://github.com/markandray/cohort/actions/workflows/ci.yml/badge.svg)
+
 **A full-stack classroom platform** where teachers manage classes and assignments, students submit work and track grades, and admins control how privileged accounts are created.
 
-Cohort is a portfolio project built around engineering decisions, not only features. [ARCHITECTURE.md](ARCHITECTURE.md) records why each major choice was made, covering authentication, database integrity, concurrent invite redemption, testing, and deployment. See also [PRD.md](PRD.md) for scope and [CODING_RULES.md](CODING_RULES.md) for conventions.
+Cohort is a portfolio project built around engineering decisions, not only features. [ARCHITECTURE.md](ARCHITECTURE.md) records why each major choice was made, covering authentication, database integrity, concurrent invite redemption, testing, and deployment. See also [PRD.md](PRD.md) for scope and [RULES.md](RULES.md) for conventions.
 
 <!--
 Uncomment once the images are in docs/screenshots/:
@@ -181,7 +183,7 @@ npm run build
 
 ### Continuous integration
 
-The GitHub Actions workflow starts PostgreSQL and Redis service containers, applies the real migrations, runs the full backend suite, and verifies that both production Docker images build.
+The GitHub Actions workflow starts PostgreSQL and Redis service containers, applies the real migrations, runs the full backend suite, lints and builds the frontend, and verifies that both production Docker images build.
 
 ### AWS infrastructure
 
